@@ -1,0 +1,17 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+.local/
+.codex-runs/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.swp
+*.swo
+*.log
+*.tsbuildinfo
+*.dmg
+*.key
+*.p12

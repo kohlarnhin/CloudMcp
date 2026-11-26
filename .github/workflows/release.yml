@@ -1,0 +1,163 @@
+name: macOS Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            arch: aarch64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            arch: x86_64
+    env:
+      RUST_TARGET: ${{ matrix.target }}
+      ARCH: ${{ matrix.arch }}
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Verify tag and application versions
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const tag = process.env.GITHUB_REF_NAME;
+          const read = (file) => readFileSync(file, 'utf8');
+          if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
+            throw new Error(`Expected a tag in X.Y.Z format, got ${tag}`);
+          }
+          const versions = {
+            'package.json': JSON.parse(read('package.json')).version,
+            'src-tauri/tauri.conf.json': JSON.parse(read('src-tauri/tauri.conf.json')).version,
+            'src-tauri/Cargo.toml': read('src-tauri/Cargo.toml').match(/^version = "([^"]+)"$/m)?.[1],
+          };
+          for (const [file, version] of Object.entries(versions)) {
+            if (version !== tag) throw new Error(`${file} has version ${version}, expected ${tag}`);
+          }
+          NODE
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          rustup target add "$RUST_TARGET"
+      - name: Build DMG and signed update archive
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          test -n "$TAURI_SIGNING_PRIVATE_KEY"
+          pnpm tauri build --ci --target "$RUST_TARGET" --bundles app,dmg --config src-tauri/tauri.release.conf.json -- --locked
+      - name: Verify and collect release files
+        run: |
+          bundle="src-tauri/target/$RUST_TARGET/release/bundle"
+          app="$bundle/macos/CloudMCP.app"
+          plist="$app/Contents/Info.plist"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "$GITHUB_REF_NAME"
+          if [[ "$ARCH" == aarch64 ]]; then
+            test "$(lipo -archs "$app/Contents/MacOS/$executable")" = arm64
+          else
+            test "$(lipo -archs "$app/Contents/MacOS/$executable")" = "$ARCH"
+          fi
+          codesign --verify --deep --strict "$app"
+          dmg=("$bundle"/dmg/*.dmg)
+          test "${#dmg[@]}" -eq 1
+          hdiutil verify "${dmg[0]}"
+          test -s "$app.tar.gz"
+          test -s "$app.tar.gz.sig"
+          mkdir -p "$RUNNER_TEMP/cloudmcp-release"
+          output="$RUNNER_TEMP/cloudmcp-release/CloudMCP_${GITHUB_REF_NAME}_${ARCH}"
+          cp "${dmg[0]}" "$output.dmg"
+          cp "$app.tar.gz" "$output.app.tar.gz"
+          cp "$app.tar.gz.sig" "$output.app.tar.gz.sig"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cloudmcp-macos-${{ matrix.arch }}
+          path: ${{ runner.temp }}/cloudmcp-release/*
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cloudmcp-macos-*
+          path: release
+          merge-multiple: true
+      - name: Generate updater manifest
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, statSync, writeFileSync } from 'node:fs';
+          const { GITHUB_REF_NAME: version, GITHUB_SERVER_URL, GITHUB_REPOSITORY } = process.env;
+          const baseUrl = `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${version}`;
+          const platforms = {};
+          for (const arch of ['aarch64', 'x86_64']) {
+            const prefix = `CloudMCP_${version}_${arch}`;
+            const archive = `${prefix}.app.tar.gz`;
+            for (const file of [`${prefix}.dmg`, archive]) {
+              if (statSync(`release/${file}`).size === 0) throw new Error(`Empty asset ${file}`);
+            }
+            const signature = readFileSync(`release/${archive}.sig`, 'utf8').trim();
+            if (!signature) throw new Error(`Missing updater signature for ${arch}`);
+            platforms[`darwin-${arch}`] = { signature, url: `${baseUrl}/${archive}` };
+          }
+          const manifest = { version, pub_date: new Date().toISOString(), platforms };
+          writeFileSync('release/latest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+      - name: Publish both architectures together
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)
+          if [[ "$draft" == false ]]; then
+            echo "Release $tag is already published."
+            exit 0
+          fi
+          if [[ "$draft" != true ]]; then
+            gh release create "$tag" --draft --verify-tag --title "CloudMCP $tag" --notes-file - <<'NOTES'
+          - Apple Silicon（M 系列）下载 `aarch64.dmg`。
+          - Intel Mac 下载 `x86_64.dmg`。
+          - 将 CloudMCP 拖到「应用程序」。后续版本可从「设置 → 关于」检查和安装更新。
+
+          DMG 使用 macOS 临时签名。首次打开时，可能需要在「系统设置 → 隐私与安全性」确认运行。
+          NOTES
+          fi
+          assets=(release/latest.json)
+          for arch in aarch64 x86_64; do
+            prefix="release/CloudMCP_${tag}_${arch}"
+            assets+=("$prefix.dmg" "$prefix.app.tar.gz" "$prefix.app.tar.gz.sig")
+          done
+          gh release upload "$tag" "${assets[@]}" --clobber
+          gh release edit "$tag" --draft=false

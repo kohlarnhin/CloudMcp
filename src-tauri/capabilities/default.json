@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json", "identifier": "main", "description": "Local desktop window only",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-theme",
+    "dialog:allow-open",
+    "clipboard-manager:allow-write-text",
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
+  ]
+}

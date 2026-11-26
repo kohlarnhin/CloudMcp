@@ -1,0 +1,38 @@
+[package]
+name = "cloudmcp"
+version = "0.1.0"
+description = "Scoped local MCP tools for remote agents"
+edition = "2021"
+rust-version = "1.88"
+
+[lib]
+name = "cloudmcp_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+rmcp = { version = "3.10", features = ["transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+rusqlite = { version = "0.31", features = ["bundled"] }
+cap-std = "3"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+rand = "0.8"
+subtle = "2"
+base64 = "0.22"
+libc = "0.2"
+tempfile = "3"
+
