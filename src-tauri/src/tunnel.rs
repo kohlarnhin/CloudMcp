@@ -61,7 +61,24 @@ pub async fn start(store: Arc<Store>) -> AppResult<()> {
         &format!("127.0.0.1:{}", config.port),
     ]);
     if config.tunnel_mode == "named" {
-        cmd.args(["run", &config.tunnel_name]);
+        match crate::cloudflare::managed_tunnel_id(&store, &config.tunnel_name) {
+            // A tunnel CloudMCP created after a Cloudflare login: its credentials live in the
+            // app data directory and the origin is passed directly, so no config.yml is needed.
+            Some(id) => {
+                let creds = crate::cloudflare::credentials_path(&store, &config.tunnel_name);
+                cmd.env("HOME", crate::cloudflare::home(&store)).args([
+                    "run",
+                    "--credentials-file",
+                    &creds.to_string_lossy(),
+                    "--url",
+                    &format!("http://127.0.0.1:{}", config.port),
+                    &id,
+                ]);
+            }
+            None => {
+                cmd.args(["run", &config.tunnel_name]);
+            }
+        }
     } else {
         cmd.args(["--url", &format!("http://127.0.0.1:{}", config.port)]);
     }

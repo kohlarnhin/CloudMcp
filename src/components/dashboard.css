@@ -449,3 +449,23 @@
 
 .dash-right { margin-left: auto; }
 .dash-truncate { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.h1-list-row.settings-hostname { flex-wrap: wrap; }
+.settings-hostname > :first-child { flex: 1 1 180px; }
+.settings-hostname-actions { display: flex; align-items: center; gap: 8px; }
+.settings-manual { border-top: .5px solid var(--h1-line); }
+.settings-manual > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 8px 14px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12.5px;
+  list-style: none;
+  cursor: pointer;
+}
+.settings-manual > summary::-webkit-details-marker { display: none; }
+.settings-manual > summary:hover { color: hsl(var(--foreground)); }
+.settings-manual[open] > summary svg { transform: rotate(180deg); }
+.settings-manual > .h1-list-row { border-top: .5px solid var(--h1-line); }

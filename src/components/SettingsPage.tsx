@@ -6,6 +6,7 @@ import { appearances } from '../lib/appearance';
 import { localEndpoint } from '../lib/connection';
 import { native } from '../lib/desktop';
 import type { Settings, Snapshot } from '../types';
+import { CloudflareTunnel } from './CloudflareTunnel';
 import { CopyButton } from './CopyButton';
 import { RotateTokenDialog } from './RotateTokenDialog';
 import { Alert, AlertDescription } from './ui/alert';
@@ -56,6 +57,11 @@ export function SettingsPage({ data, refresh, appearance }: {
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setDraft(current => ({ ...current, [key]: value }));
   };
+  const saveDraft = async () => {
+    if (!dirty) return;
+    await native('save_settings', { settings });
+    setDraft({});
+  };
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (locked) return;
@@ -99,22 +105,14 @@ export function SettingsPage({ data, refresh, appearance }: {
             <div className="min-w-0">
               <p id="settings-tunnel-mode" className="text-sm font-medium">隧道方式</p>
               <p className="settings-help">
-                {settings.tunnel_mode === 'quick' ? '自动生成临时 HTTPS 地址。' : '使用已在本机配置凭据和路由的命名隧道。'}
+                {settings.tunnel_mode === 'quick' ? '自动生成临时 HTTPS 地址。' : '固定域名，地址不再变化；登录 Cloudflare 后可自动配置。'}
               </p>
             </div>
             <SegmentedControl labelledBy="settings-tunnel-mode" value={settings.tunnel_mode} options={tunnelModes} disabled={locked}
               className="dash-segments" onChange={value => update('tunnel_mode', value)} />
           </div>
-          {settings.tunnel_mode === 'named' && <>
-            <SettingsField id="tunnel-name" label="隧道名称或 ID">
-              <Input id="tunnel-name" required value={settings.tunnel_name} title={settings.tunnel_name}
-                onChange={event => update('tunnel_name', event.target.value)} className={pathInput} />
-            </SettingsField>
-            <SettingsField id="public-url" label="公网 HTTPS 地址" description={'路由应指向 http://' + localEndpoint(settings.port) + '。'}>
-              <Input id="public-url" type="url" required value={settings.public_url} title={settings.public_url}
-                onChange={event => update('public_url', event.target.value)} aria-describedby="public-url-help" className={pathInput} />
-            </SettingsField>
-          </>}
+          {settings.tunnel_mode === 'named' && <CloudflareTunnel data={data} settings={settings}
+            update={update} saveDraft={saveDraft} refresh={refresh} />}
           <SettingsField id="cloudflared-path" label="cloudflared 可执行文件" description="填写 cloudflared 自动选择内置版，也可填写本机可执行文件的路径。">
             <Input id="cloudflared-path" required value={settings.cloudflared_path} title={settings.cloudflared_path}
               onChange={event => update('cloudflared_path', event.target.value)} aria-describedby="cloudflared-path-help" className={pathInput} />

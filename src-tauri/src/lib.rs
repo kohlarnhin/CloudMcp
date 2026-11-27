@@ -1,3 +1,4 @@
+mod cloudflare;
 mod commands;
 mod executions;
 mod files;
@@ -44,7 +45,10 @@ pub fn run() {
             commands::get_token,
             commands::rotate_token,
             commands::dependencies,
-            commands::portal_status
+            commands::portal_status,
+            commands::cloudflare_login,
+            commands::cloudflare_logout,
+            commands::cloudflare_setup
         ])
         .build(tauri::generate_context!())
         .expect("CloudMCP 启动失败")

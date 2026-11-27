@@ -67,6 +67,7 @@ export interface Snapshot {
   tunnel_error: string | null;
   data_dir: string;
   platform: string;
+  cloudflare: { logged_in: boolean; managed_tunnel: boolean };
 }
 
 export interface Dependency {

@@ -1,5 +1,5 @@
 use crate::{
-    executions, portal, privacy, server,
+    cloudflare, executions, portal, privacy, server,
     store::{AppResult, Settings, Store},
     tunnel,
 };
@@ -16,7 +16,7 @@ pub fn snapshot(state: State<'_, Arc<Store>>) -> AppResult<Value> {
     let live = state.live.lock().unwrap();
     // Configuration executable paths stay local; public workspace paths are normalized.
     Ok(
-        json!({"settings":settings,"scopes":privacy::value(json!(scopes)),"executions":privacy::value(json!(executions)),"audit":privacy::value(json!(audit)),"server_running":live.server.is_some(),"tunnel_running":live.tunnel.is_some(),"public_url":live.tunnel_url,"tunnel_error":live.tunnel_error.as_ref().map(|e|privacy::text(e)),"data_dir":privacy::text(&state.dir.to_string_lossy()),"platform":std::env::consts::OS}),
+        json!({"settings":settings,"scopes":privacy::value(json!(scopes)),"executions":privacy::value(json!(executions)),"audit":privacy::value(json!(audit)),"server_running":live.server.is_some(),"tunnel_running":live.tunnel.is_some(),"public_url":live.tunnel_url,"tunnel_error":live.tunnel_error.as_ref().map(|e|privacy::text(e)),"data_dir":privacy::text(&state.dir.to_string_lossy()),"cloudflare":cloudflare::status(&state),"platform":std::env::consts::OS}),
     )
 }
 #[tauri::command]
@@ -112,6 +112,23 @@ pub async fn dependencies(state: State<'_, Arc<Store>>) -> AppResult<Value> {
         entries.push(json!({"name":name,"path":path.to_string_lossy(),"available":available,"version":privacy::text(&version)}));
     }
     Ok(json!(entries))
+}
+
+/// 打开浏览器登录 Cloudflare，等待授权完成（最长 10 分钟）。
+#[tauri::command]
+pub async fn cloudflare_login(state: State<'_, Arc<Store>>) -> AppResult<()> {
+    cloudflare::login(&state).await
+}
+#[tauri::command]
+pub fn cloudflare_logout(state: State<'_, Arc<Store>>) -> AppResult<()> {
+    cloudflare::logout(&state)
+}
+/// 为域名自动创建或复用固定隧道、配置 DNS，并切换到固定隧道设置。
+#[tauri::command]
+pub async fn cloudflare_setup(state: State<'_, Arc<Store>>, hostname: String) -> AppResult<Value> {
+    cloudflare::setup(&state, &hostname)
+        .await
+        .map_err(|e| privacy::text(&e))
 }
 
 /// 只读：转发 Codex Portal 本地 IPC 的 status，界面不提供切换。

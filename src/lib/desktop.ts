@@ -27,6 +27,7 @@ export const initialSnapshot: Snapshot = {
   tunnel_error: null,
   data_dir: '',
   platform: '',
+  cloudflare: { logged_in: false, managed_tunnel: false },
 };
 
 export async function native<T>(command: string, args?: Record<string, unknown>): Promise<T> {
