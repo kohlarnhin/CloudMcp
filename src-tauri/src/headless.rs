@@ -13,6 +13,9 @@ struct Config {
     command_timeout_seconds: Option<u64>,
     codex_path: Option<String>,
     codex_enabled: Option<bool>,
+    /// none, codex or pi.
+    local_agent: Option<String>,
+    pi_path: Option<String>,
     #[serde(default)]
     directories: Vec<Directory>,
 }
@@ -47,6 +50,8 @@ pub fn run(path: &str) -> AppResult<()> {
         || config.command_timeout_seconds.is_some()
         || config.codex_path.is_some()
         || config.codex_enabled.is_some()
+        || config.local_agent.is_some()
+        || config.pi_path.is_some()
     {
         let mut settings = store.config();
         if let Some(port) = config.port {
@@ -56,7 +61,13 @@ pub fn run(path: &str) -> AppResult<()> {
             settings.command_timeout_seconds = timeout;
         }
         if let Some(enabled) = config.codex_enabled {
-            settings.codex_enabled = enabled;
+            settings.local_agent = if enabled { "codex" } else { "none" }.into();
+        }
+        if let Some(agent) = config.local_agent {
+            settings.local_agent = agent;
+        }
+        if let Some(path) = config.pi_path {
+            settings.pi_path = expand(&path)?.to_string_lossy().into_owned();
         }
         if let Some(path) = config.codex_path {
             settings.codex_path = expand(&path)?.to_string_lossy().into_owned();

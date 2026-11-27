@@ -13,13 +13,15 @@ export interface Settings {
   public_url: string;
   result_chars: number;
   command_timeout_seconds: number;
+  local_agent: 'none' | 'codex' | 'pi';
   codex_enabled: boolean;
   codex_path: string;
+  pi_path: string;
 }
 
 export type ExecutionStatus = 'starting' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'unknown' | 'interrupted';
 export type ExecutionVerification = 'unverified' | 'completed' | 'needs_work';
-export type ExecutionKind = 'shell' | 'codex';
+export type ExecutionKind = 'shell' | 'codex' | 'pi';
 
 export interface Execution {
   run_id: string;

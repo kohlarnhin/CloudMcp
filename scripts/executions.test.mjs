@@ -19,7 +19,7 @@ test('every execution status and verification has a label for the list and the d
     ['starting', 'running', 'idle', 'error', 'idle', 'error', 'warning', 'idle']);
   assert.deepEqual(Object.keys(verifications), ['unverified', 'completed', 'needs_work']);
   assert.deepEqual(Object.values(verifications).map(item => item.variant), ['outline', 'success', 'warning']);
-  assert.deepEqual(kindNames, { codex: 'Codex', shell: '命令' });
+  assert.deepEqual(kindNames, { codex: 'Codex', pi: 'Pi', shell: '命令' });
 });
 
 test('unknown executions stay stoppable but only starting and running count as running', () => {

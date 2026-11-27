@@ -92,7 +92,10 @@ pub async fn dependencies(state: State<'_, Arc<Store>>) -> AppResult<Value> {
     let mut entries = Vec::new();
     let mut checks = vec![("cloudflared", tunnel::executable(&config.cloudflared_path))];
     if config.codex_enabled {
-        checks.push(("codex", PathBuf::from(config.codex_path)));
+        checks.push(("codex", PathBuf::from(&config.codex_path)));
+    }
+    if config.pi_enabled() {
+        checks.push(("pi", PathBuf::from(&config.pi_path)));
     }
     for (name, path) in checks {
         let output = tokio::time::timeout(

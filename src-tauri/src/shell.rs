@@ -113,7 +113,8 @@ pub fn command(
         .current_dir(&scope.path);
     match toolchain {
         Some(toolchain) => {
-            cmd.env("HOME", &toolchain.home).env("PATH", &toolchain.path);
+            cmd.env("HOME", &toolchain.home)
+                .env("PATH", &toolchain.path);
             for (key, value) in toolchain.env {
                 cmd.env(key, value);
             }
@@ -233,9 +234,12 @@ fn toolchain_access(cmd: &mut Command, profile: &mut String) -> Toolchain {
     for rel in HOME_WRITE {
         allow(cmd, profile, &home.join(rel), true);
     }
-    for dir in [libc::_CS_DARWIN_USER_TEMP_DIR, libc::_CS_DARWIN_USER_CACHE_DIR]
-        .into_iter()
-        .filter_map(darwin_dir)
+    for dir in [
+        libc::_CS_DARWIN_USER_TEMP_DIR,
+        libc::_CS_DARWIN_USER_CACHE_DIR,
+    ]
+    .into_iter()
+    .filter_map(darwin_dir)
     {
         allow(cmd, profile, &dir, true);
     }
@@ -259,7 +263,6 @@ fn toolchain_access(cmd: &mut Command, profile: &mut String) -> Toolchain {
         .join(":");
     Toolchain { home, path, env }
 }
-
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
@@ -310,7 +313,7 @@ mod tests {
         );
 
         let mut settings = store.config();
-        settings.codex_enabled = false;
+        settings.local_agent = "none".into();
         store.save_settings(settings).unwrap();
         let (mut cmd, _sandbox_temp) = command(
             &store,
@@ -319,7 +322,10 @@ mod tests {
         )
         .unwrap();
         let home = dirs::home_dir().unwrap();
-        assert_eq!(env_of(&cmd, "HOME").unwrap(), home.to_string_lossy().as_ref());
+        assert_eq!(
+            env_of(&cmd, "HOME").unwrap(),
+            home.to_string_lossy().as_ref()
+        );
         assert!(env_of(&cmd, "PATH").unwrap().ends_with("/usr/sbin:/sbin"));
         let output = cmd.output().await.unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -327,4 +333,3 @@ mod tests {
         assert!(!stderr.contains("xcrun_db"), "{stderr}");
     }
 }
-

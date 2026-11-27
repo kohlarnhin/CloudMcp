@@ -19,7 +19,7 @@ export const verifications: Record<ExecutionVerification, { label: string; varia
   needs_work: { label: '需要继续', variant: 'warning' },
 };
 
-export const kindNames: Record<ExecutionKind, string> = { codex: 'Codex', shell: '命令' };
+export const kindNames: Record<ExecutionKind, string> = { codex: 'Codex', pi: 'Pi', shell: '命令' };
 
 export function isActive(run: Pick<Execution, 'status'>) {
   return ['starting', 'running', 'unknown'].includes(run.status);
@@ -59,8 +59,8 @@ export function sessionText(run: Pick<Execution, 'kind' | 'session_id' | 'status
 }
 
 export function handoff(run: Pick<Execution, 'kind' | 'session_id' | 'workspace' | 'run_id'>) {
-  const session = run.kind === 'codex'
-    ? `${run.session_id ? `原 Codex 会话 ID 为 ${run.session_id}。` : '会话 ID 尚未登记，请先核实运行状态。'}需要继续时使用明确的 session_id，并为新一轮提供新的 request_id。`
+  const session = run.kind !== 'shell'
+    ? `${run.session_id ? `原 ${kindNames[run.kind]} 会话 ID 为 ${run.session_id}。` : '会话 ID 尚未登记，请先核实运行状态。'}需要继续时使用明确的 session_id，并为新一轮提供新的 request_id。`
     : '这是普通命令执行；后续命令请使用新的 request_id。';
   return `请通过 CloudMCP 接手授权目录「${run.workspace}」。先调用 execution_list，再检查执行 ${run.run_id} 的 execution_get。${session}运行中请等待结果；已结束请检查验收条件和测试证据。状态待核实时先核实本机进程，不要重复启动。`;
 }

@@ -18,13 +18,19 @@ const CODEX_TOOLS: [&str; 2] = ["codex_exec", "codex_portal"];
 pub struct Gateway {
     store: Arc<Store>,
     codex_enabled: bool,
+    pi_enabled: bool,
     tool_router: ToolRouter<Self>,
 }
 impl Gateway {
     pub fn new(store: Arc<Store>) -> Self {
         // Settings can only change while the server is stopped, so each session reads them once.
-        let codex_enabled = store.config().codex_enabled;
+        let config = store.config();
+        let codex_enabled = config.codex_enabled;
+        let pi_enabled = config.pi_enabled();
         let mut tool_router = Self::tool_router();
+        if !pi_enabled {
+            tool_router.remove_route("pi_exec");
+        }
         if !codex_enabled {
             for name in CODEX_TOOLS {
                 tool_router.remove_route(name);
@@ -36,6 +42,7 @@ impl Gateway {
         Self {
             store,
             codex_enabled,
+            pi_enabled,
             tool_router,
         }
     }
@@ -136,6 +143,17 @@ impl Gateway {
             "codex.exec",
             &workspace,
             executions::codex(self.store.clone(), p).await,
+        )
+    }
+    #[tool(
+        description = "Start or resume the local Pi coding agent (pi.dev) in an authorized workspace. Pi runs with the user's own Pi configuration: models, API keys, settings, MCP servers and codemode from ~/.pi, and its read/write/edit/bash tools have full access to this machine. Omit session_id for a new session; CloudMCP assigns the session ID and returns it immediately. To continue, pass a registered session_id from execution_list/get with a new request_id once the previous run has stopped. One active Pi execution per directory/session. Follow with execution_wait; the summary holds Pi's final answer. Verify the diff and checks yourself before acceptance, then record it with execution_review. Reuse request_id for retries of the same operation."
+    )]
+    async fn pi_exec(&self, Parameters(p): Parameters<executions::PiArgs>) -> CallToolResult {
+        let workspace = p.workspace.clone();
+        self.result(
+            "pi.exec",
+            &workspace,
+            executions::pi(self.store.clone(), p).await,
         )
     }
     #[tool(
@@ -340,12 +358,30 @@ const INSTRUCTIONS_DIRECT: &str = concat!(
     "Use relative file paths, paginated logs and fs_image to retrieve only needed evidence."
 );
 
+const INSTRUCTIONS_PI: &str = concat!(
+    "CloudMCP exposes local filesystem tools, persistent background commands and the local Pi coding agent to remote agents. ",
+    "Start with workspace_list and use the authorized directory NAME as workspace. ",
+    "Delegate implementation work to Pi with pi_exec: give the goal, constraints and acceptance criteria, then follow it with execution_wait. ",
+    "Pi uses the user's own models, keys, MCP servers and codemode, and works with full access on this machine. ",
+    "Keep decisions with yourself: after each Pi round, inspect the diff with fs_read/fs_search or command_exec (git diff) and run the project's checks. ",
+    "If acceptance fails, record needs_work with execution_review and resume the same Pi session_id with a new request_id and the confirmed findings. ",
+    "Small edits can be made directly with fs_edit; command_exec runs with the developer toolchain (Git with the user's config, cargo, pnpm/npm, Xcode tools) in a sandbox that writes only to authorized directories, toolchain caches and temp directories. ",
+    "Commit, push or release only when the user asked for it. ",
+    "When switching agents, query execution_list for the directory and inspect execution_get. Reuse request_id when retrying lost responses. ",
+    "Public home paths use ~/ as an alias for this machine's home directory. ",
+    "Use relative file paths, paginated logs and fs_image to retrieve only needed evidence."
+);
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for Gateway {
     fn get_info(&self) -> ServerConfig {
         let mut info = ServerConfig::default();
         info.server_info = rmcp::model::Implementation::new("cloudmcp", env!("CARGO_PKG_VERSION"));
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        if self.pi_enabled {
+            info.instructions = Some(INSTRUCTIONS_PI.into());
+            return info;
+        }
         if !self.codex_enabled {
             info.instructions = Some(INSTRUCTIONS_DIRECT.into());
             return info;
@@ -480,7 +516,7 @@ mod tests {
             .contains("codex-delegate"));
 
         let mut settings = store.config();
-        settings.codex_enabled = false;
+        settings.local_agent = "none".into();
         settings.codex_path = String::new();
         store.save_settings(settings).unwrap();
         let direct = Gateway::new(store.clone());
@@ -508,6 +544,22 @@ mod tests {
             !instructions.contains("codex_exec uses") && !instructions.contains("codex-delegate")
         );
         assert!(instructions.contains("calling agent"));
+    }
+
+    #[test]
+    fn pi_choice_offers_pi_exec_without_codex() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(temp.path().join("data")).unwrap();
+        assert!(!Gateway::new(store.clone()).tool_router.has_route("pi_exec"));
+        let mut settings = store.config();
+        settings.local_agent = "pi".into();
+        settings.pi_path = "pi".into();
+        store.save_settings(settings).unwrap();
+        assert!(!store.config().codex_enabled);
+        let gateway = Gateway::new(store.clone());
+        assert!(gateway.tool_router.has_route("pi_exec"));
+        assert!(!gateway.tool_router.has_route("codex_exec"));
+        assert!(gateway.get_info().instructions.unwrap().contains("pi_exec"));
     }
 
     #[test]

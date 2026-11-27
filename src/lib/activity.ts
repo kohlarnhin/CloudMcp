@@ -14,6 +14,7 @@ const actionNames: Record<string, string> = {
   'command.exec': '执行目录内命令',
   'scope.rename': '修改目录名称',
   'codex.exec': '调用本机 Codex',
+  'pi.exec': '调用本机 Pi',
   'execution.start': '启动执行',
   'execution.end': '保存执行结果',
   'execution.list': '查询执行会话',

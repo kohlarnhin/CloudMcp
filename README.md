@@ -67,15 +67,21 @@ git push origin 0.1.1
 4. 复制配置与令牌，添加到远端 Agent 的 MCP 客户端。
 5. 在远端 Agent 中发起操作；它通过 MCP 调用本机工具。
 
-### 是否使用 Codex
+### 本机委派：不委派 / Codex / Pi
 
-“设置 → Codex 委派 → 使用 Codex”默认开启。关闭后（需先停止服务）：
+“设置 → 本机委派”三选一，默认 Codex，修改前需先停止服务：
 
-- 远端不再看到 `codex_exec`、`codex_portal`，服务说明也不再包含 codex-delegate 委派流程，由调用方直接用 `fs_*` 与 `command_exec` 完成开发、验证、提交和发版；不需要导入 `codex-delegate` Skill。
+- **Codex**：提供 `codex_exec`、`codex_portal` 与 codex-delegate 委派说明。
+- **Pi**：提供 `pi_exec`，在授权目录中以你的主目录启动本机 [Pi](https://pi.dev)（`pi --mode json --session-id …`），沿用 `~/.pi` 里的模型、密钥、MCP 与 codemode。新会话由 CloudMCP 分配 ID 并立即返回，续跑时传回原 `session_id` 与新的 `request_id`；结果、日志、等待与验收复用 `execution_*` 工具。需先在本机安装并配置好 Pi。
+- **不委派**：不提供本机 Agent，由调用方直接用 `fs_*` 与 `command_exec` 完成开发、验证、提交和发版。
+
+选择 Pi 或不委派时：
+
+- 远端看不到 `codex_exec`、`codex_portal` 与 codex-delegate 委派流程；不需要导入 `codex-delegate` Skill。
 - `command_exec` 切换为开发工具链模式：`HOME` 为本机主目录，可读取 Git 全局配置（含 `~/.gitconfig*`）与 `~/.ssh`，可使用并写入 `~/.cargo`、`~/.rustup`、pnpm / npm / yarn / bun 缓存、`~/Library/Caches` 及系统临时目录，可读取 Xcode 与命令行工具；授权目录之外的其他位置仍不可写。
-- 环境检查不再检查 Codex 与 Codex Portal。
+- 环境检查只检查所选 Agent。
 
-无界面运行时可在配置中写 `"codex_enabled": false`。
+无界面运行时可在配置中写 `"local_agent": "none"`、`"codex"` 或 `"pi"`，以及 `"pi_path"`；旧的 `"codex_enabled"` 仍然兼容。
 
 要使用完整的委派交付流程，把 `skills/codex-delegate` 整个目录导入远端 Agent 的 Skills，并在远端任务中调用 `codex-delegate`。调用者决定方案、独立验收、发起同会话返工，以及完成已授权的提交和发版。 [codex-delegate Skill](skills/codex-delegate/SKILL.md)
 
@@ -112,6 +118,7 @@ git push origin 0.1.1
 | `command_exec` | 自动记录并后台执行目录内的命令，短暂等待后返回执行编号、状态与有限输出 |
 | `codex_exec` | 新建或明确续跑本机 Codex 会话，默认完整权限，可选委派实施或只读审查角色 |
 | `codex_portal` | 用 `action=status` 查询本机 Codex Portal 额度，或用 `action=switch` 触发 Portal 自行决定是否切换账号 |
+| `pi_exec` | 选择 Pi 委派时提供：新建或按 `session_id` 续跑本机 Pi 会话，使用 `~/.pi` 中的配置 |
 | `execution_list` | 按目录名称分页查询执行；可用 kind=codex 只查 Codex 会话 |
 | `execution_get` | 查询执行状态、会话 ID、原始要求、验收条件、摘要和输出末尾 |
 | `execution_output` | 分页读取 stdout / stderr / prompt / acceptance_criteria / summary / worker，每次最多 32 KiB |

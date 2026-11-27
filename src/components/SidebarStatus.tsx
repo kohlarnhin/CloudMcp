@@ -2,6 +2,8 @@ import { tunnelTone } from '../lib/connection';
 import { runningCount } from '../lib/executions';
 import type { Snapshot } from '../types';
 
+const agentLabels = { none: '调用方直连', codex: 'Codex 委派', pi: 'Pi 委派' } as const;
+
 function overview(data: Snapshot) {
   if (!data.server_running) return { tone: undefined, title: '离线', detail: '本机服务未启动' };
   const tunnel = tunnelTone(data);
@@ -19,7 +21,7 @@ export function SidebarStatus({ data, onOpen }: { data: Snapshot; onOpen: () => 
     <span className="flex items-center gap-2">
       <span className="h1-status-dot" data-tone={state.tone} aria-hidden="true" />
       <span className="text-[13px] font-semibold">{state.title}</span>
-      <span className="sidebar-status-mode">{data.settings.codex_enabled ? 'Codex 委派' : '调用方直连'}</span>
+      <span className="sidebar-status-mode">{agentLabels[data.settings.local_agent]}</span>
     </span>
     <span className="sidebar-status-detail dash-truncate" title={state.detail}>{state.detail}</span>
     <span className="sidebar-status-detail">

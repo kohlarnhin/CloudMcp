@@ -137,7 +137,7 @@ export function App() {
           <header className="dash-page-heading">
             <div>
               <h1>执行记录</h1>
-              <p className="dash-page-description">本机最近 50 条命令{data.settings.codex_enabled ? '与 Codex 会话' : ''}，远端断开后仍持续记录。</p>
+              <p className="dash-page-description">本机最近 50 条命令{data.settings.local_agent === 'codex' ? '与 Codex 会话' : data.settings.local_agent === 'pi' ? '与 Pi 会话' : ''}，远端断开后仍持续记录。</p>
             </div>
           </header>
           <ExecutionTable executions={data.executions} onOpen={run => openExecution(run, 'executions')} />

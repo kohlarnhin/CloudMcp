@@ -52,14 +52,19 @@ impl Status {
 pub enum Kind {
     Shell,
     Codex,
+    Pi,
 }
 impl Kind {
     fn key(self) -> &'static str {
-        if self == Self::Codex {
-            "codex"
-        } else {
-            "shell"
+        match self {
+            Self::Shell => "shell",
+            Self::Codex => "codex",
+            Self::Pi => "pi",
         }
+    }
+    /// Agent sessions (Codex or Pi) carry a prompt and a resumable session ID.
+    pub fn agent(self) -> bool {
+        self != Self::Shell
     }
 }
 
@@ -156,6 +161,18 @@ pub struct CodexArgs {
     pub wait_seconds: Option<u64>,
 }
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct PiArgs {
+    pub workspace: String,
+    pub request_id: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub acceptance_criteria: String,
+    /// Omit for a new session; specify a registered Pi session ID from execution_list/get to resume.
+    pub session_id: Option<String>,
+    pub timeout_seconds: Option<u64>,
+    pub wait_seconds: Option<u64>,
+}
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct RunArgs {
     pub workspace: String,
     pub run_id: String,
@@ -206,7 +223,11 @@ pub fn init(db: &Connection) -> AppResult<()> {
         CREATE UNIQUE INDEX IF NOT EXISTS execution_active_workspace ON execution_records(scope_id)
             WHERE kind='codex' AND status IN ('starting','running','unknown');
         CREATE UNIQUE INDEX IF NOT EXISTS execution_active_session ON execution_records(session_id)
-            WHERE kind='codex' AND session_id IS NOT NULL AND status IN ('starting','running','unknown');").map_err(err)
+            WHERE kind='codex' AND session_id IS NOT NULL AND status IN ('starting','running','unknown');
+        CREATE UNIQUE INDEX IF NOT EXISTS execution_active_workspace_pi ON execution_records(scope_id)
+            WHERE kind='pi' AND status IN ('starting','running','unknown');
+        CREATE UNIQUE INDEX IF NOT EXISTS execution_active_session_pi ON execution_records(session_id)
+            WHERE kind='pi' AND session_id IS NOT NULL AND status IN ('starting','running','unknown');").map_err(err)
 }
 pub fn load(store: &Store, id: &str) -> AppResult<Record> {
     let raw: String = store
@@ -311,12 +332,12 @@ pub fn view(store: &Store, scope: &Scope, r: &Record, detail: bool) -> Value {
         "exit_code":r.exit_code,"signal":r.signal,"timed_out":r.status==Status::TimedOut,
         "error":r.error.as_ref().map(|s|clipped(&privacy::text(s),cap)),
         "summary":clipped(&privacy::text(&r.summary),if detail{cap}else{600}),
-        "request_brief":clipped(&privacy::text(if r.spec.kind==Kind::Codex{&r.spec.prompt}else{&r.spec.command}),200),
+        "request_brief":clipped(&privacy::text(if r.spec.kind.agent(){&r.spec.prompt}else{&r.spec.command}),200),
         "acceptance_criteria":clipped(&privacy::text(&r.spec.acceptance_criteria),if detail{cap}else{600}),
         "verification_note":clipped(&privacy::text(&r.verification_note),if detail{cap}else{600}),
         "evidence_paths":r.evidence_paths,
-        "full_access":r.spec.kind==Kind::Codex && r.delegation!=Some(DelegationRole::Review),
-        "can_resume":r.spec.kind==Kind::Codex && r.session_id.is_some() && !r.status.active(),
+        "full_access":r.spec.kind.agent() && r.delegation!=Some(DelegationRole::Review),
+        "can_resume":r.spec.kind.agent() && r.session_id.is_some() && !r.status.active(),
     });
     if let Some(role) = r.delegation {
         result["delegation"] = json!(role);
@@ -457,6 +478,44 @@ pub async fn codex(store: Arc<Store>, p: CodexArgs) -> AppResult<Value> {
     )
     .await
 }
+/// Pi session IDs are chosen by CloudMCP for new sessions; Pi accepts letters, digits, `.`, `_` and `-`.
+fn valid_pi_session(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+pub async fn pi(store: Arc<Store>, p: PiArgs) -> AppResult<Value> {
+    if !store.config().pi_enabled() {
+        return Err("本机未启用 Pi 委派；请在 CloudMCP 设置中选择 Pi".into());
+    }
+    if p.prompt.trim().is_empty() || p.prompt.len() > 65536 || p.acceptance_criteria.len() > 16000 {
+        return Err("Pi 要求不能为空，最多 64 KiB；验收条件最多 16 KiB".into());
+    }
+    if p.session_id
+        .as_deref()
+        .is_some_and(|s| !valid_pi_session(s))
+    {
+        return Err("请提供已登记的 Pi 会话 ID".into());
+    }
+    launch(
+        store,
+        &p.workspace,
+        p.request_id,
+        Specification {
+            kind: Kind::Pi,
+            command: String::new(),
+            prompt: p.prompt,
+            acceptance_criteria: p.acceptance_criteria,
+            session_id: p.session_id,
+            timeout_seconds: p.timeout_seconds,
+            delegation: None,
+        },
+        p.wait_seconds.unwrap_or(1),
+    )
+    .await
+}
 async fn launch(
     store: Arc<Store>,
     workspace: &str,
@@ -487,6 +546,7 @@ async fn launch(
         return Err("执行时限应为 1–86400 秒".into());
     }
     let timestamp = now();
+    let spec_kind = spec.kind;
     let mut record = Record {
         run_id: Uuid::new_v4().to_string(),
         scope_id: scope.id.clone(),
@@ -497,7 +557,11 @@ async fn launch(
         spec,
         status: Status::Starting,
         codex_home: None,
-        codex_path: config.codex_path,
+        codex_path: if spec_kind == Kind::Pi {
+            config.pi_path
+        } else {
+            config.codex_path
+        },
         timeout_seconds: timeout,
         created_at: timestamp.clone(),
         updated_at: timestamp.clone(),
@@ -568,11 +632,25 @@ async fn launch(
                     Some(home.to_string_lossy().into_owned())
                 };
             }
+            if record.spec.kind == Kind::Pi {
+                if let Some(session) = &record.session_id {
+                    let known: Option<String> = tx.query_row("SELECT run_id FROM execution_records WHERE scope_id=? AND session_id=? AND kind='pi' LIMIT 1",
+                        params![scope.id, session], |r| r.get(0)).optional().map_err(err)?;
+                    if known.is_none() {
+                        return Err(
+                            "该会话不属于此目录的已登记 Pi 执行，请先查询 execution_list".into(),
+                        );
+                    }
+                } else {
+                    // Pi creates the session under the ID CloudMCP chooses, so it is known before the run.
+                    record.session_id = Some(Uuid::new_v4().to_string());
+                }
+            }
             tx.execute("INSERT INTO execution_records (run_id,scope_id,request_id,kind,status,session_id,created_at,payload) VALUES (?,?,?,?,?,?,?,?)",params![
                 record.run_id,record.scope_id,record.request_id,record.spec.kind.key(),record.status.key(),
                 record.session_id,record.created_at,serde_json::to_string(&record).map_err(err)?,
             ]).map_err(|e|if matches!(e,rusqlite::Error::SqliteFailure(ref code,_) if code.code==rusqlite::ErrorCode::ConstraintViolation){
-                "此目录或 Codex 会话已有执行正在运行或等待核实，请查询 execution_list 后接续".into()
+                "此目录或会话已有 Codex/Pi 执行正在运行或等待核实，请查询 execution_list 后接续".into()
             }else{err(e)})?;
             tx.commit().map_err(err)?;
             (record, true)
@@ -830,7 +908,16 @@ mod tests {
         ).unwrap();
         let loaded = load(&store, &record.run_id).unwrap();
         assert_eq!(loaded.verification, "unverified");
-        let listed = list(&store, ListArgs { workspace: "project".into(), kind: None, offset: None, limit: None }).unwrap();
+        let listed = list(
+            &store,
+            ListArgs {
+                workspace: "project".into(),
+                kind: None,
+                offset: None,
+                limit: None,
+            },
+        )
+        .unwrap();
         assert_eq!(listed["executions"].as_array().unwrap().len(), 1);
     }
     fn insert_record(store: &Store, status: Status) -> String {

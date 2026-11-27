@@ -469,3 +469,4 @@
 .settings-manual > summary:hover { color: hsl(var(--foreground)); }
 .settings-manual[open] > summary svg { transform: rotate(180deg); }
 .settings-manual > .h1-list-row { border-top: .5px solid var(--h1-line); }
+.settings-manual + .h1-list-row { border-top: .5px solid var(--h1-line); }

@@ -38,8 +38,9 @@ function PortalEnvironment() {
   </div>;
 }
 
-function Environment({ codexEnabled }: { codexEnabled: boolean }) {
-  const dependencyNames = codexEnabled ? ['cloudflared', 'codex'] : ['cloudflared'];
+function Environment({ agent }: { agent: 'none' | 'codex' | 'pi' }) {
+  const codexEnabled = agent === 'codex';
+  const dependencyNames = agent === 'none' ? ['cloudflared'] : ['cloudflared', agent];
   const [dependencies, setDependencies] = useState<Dependency[] | null>(null);
   const [checking, setChecking] = useState(false);
   const check = useCallback(async () => {
@@ -54,7 +55,7 @@ function Environment({ codexEnabled }: { codexEnabled: boolean }) {
   }, []);
   useEffect(() => {
     if (desktop || preview) void check();
-  }, [check, codexEnabled]);
+  }, [check, agent]);
 
   return <section className="dash-section" aria-labelledby="diagnostics-environment">
     <header className="dash-section-heading">
@@ -110,6 +111,6 @@ export function DiagnosticsPage({ data, onOpenExecutions, onOpenExecution }: {
       <h2 className="h1-group-title dash-section-title" id="diagnostics-activity">最近访问</h2>
       <ActivityTable audit={data.audit.slice(0, recentLimit)} />
     </section>
-    <Environment codexEnabled={data.settings.codex_enabled} />
+    <Environment agent={data.settings.local_agent} />
   </>;
 }

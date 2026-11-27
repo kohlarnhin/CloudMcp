@@ -130,8 +130,10 @@ const snapshot: Snapshot = {
     public_url: publicUrl,
     result_chars: 6000,
     command_timeout_seconds: 3600,
+    local_agent: 'codex',
     codex_enabled: true,
     codex_path: 'codex',
+    pi_path: 'pi',
   },
   scopes,
   audit,
@@ -166,6 +168,7 @@ export function previewNative(command: string, args?: Record<string, unknown>) {
       return { ...snapshot, settings: { ...snapshot.settings }, cloudflare: { ...snapshot.cloudflare } };
     case 'save_settings':
       Object.assign(snapshot.settings, args?.settings);
+      snapshot.settings.codex_enabled = snapshot.settings.local_agent === 'codex';
       return null;
     case 'stop_server':
       Object.assign(snapshot, { server_running: false, tunnel_running: false, public_url: null });

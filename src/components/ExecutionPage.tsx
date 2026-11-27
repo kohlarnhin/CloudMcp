@@ -79,11 +79,11 @@ export function ExecutionPage({ workspace, runId, snapshotRun, refresh, backLabe
       <div className="h1-group dash-summary" data-execution-facts={run.run_id}>
         <div className="dash-facts">
           <span>类型 <b>{kindNames[run.kind]}</b></span>
-          <span className="flex min-w-0 items-center">{run.kind === 'codex' ? '会话' : '执行'}
+          <span className="flex min-w-0 items-center">{run.kind !== 'shell' ? '会话' : '执行'}
             <b className="dash-truncate font-mono font-medium select-text" title={run.session_id ?? run.run_id}>
-              {run.kind === 'codex' ? sessionText(run) : run.run_id.slice(0, 8)}
+              {run.kind !== 'shell' ? sessionText(run) : run.run_id.slice(0, 8)}
             </b>
-            {run.kind === 'codex' && run.session_id && <CopyButton text={run.session_id} label="复制" className="ml-2" />}
+            {run.kind !== 'shell' && run.session_id && <CopyButton text={run.session_id} label="复制" className="ml-2" />}
           </span>
           <span className="wrap-anywhere">请求 <b className="font-mono font-medium select-text">{run.request_id}</b></span>
           <span>时限 <b>{elapsed('1970-01-01T00:00:00Z', new Date(run.timeout_seconds * 1000).toISOString())}</b></span>
@@ -119,7 +119,7 @@ export function ExecutionPage({ workspace, runId, snapshotRun, refresh, backLabe
         </span>} />}
 
       {tab === 'request' && <div className="flex flex-col gap-4">
-        {detail && (detail.prompt || detail.command) ? <RecordText title={detail.kind === 'codex' ? '原始要求' : '执行命令'} text={detail.prompt || detail.command || ''} />
+        {detail && (detail.prompt || detail.command) ? <RecordText title={detail.kind !== 'shell' ? '原始要求' : '执行命令'} text={detail.prompt || detail.command || ''} />
           : <RecordText title="要求摘要" text={run.request_brief || '远端没有提供要求摘要。'} />}
         {run.acceptance_criteria && <RecordText title="验收条件" text={run.acceptance_criteria} />}
       </div>}

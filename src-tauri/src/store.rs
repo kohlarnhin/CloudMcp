@@ -2,6 +2,7 @@ use chrono::Utc;
 use rand::{rngs::OsRng, RngCore};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::HashMap,
     fs,
@@ -36,10 +37,19 @@ pub struct Settings {
     pub public_url: String,
     pub result_chars: usize,
     pub command_timeout_seconds: u64,
-    /// When false, Codex tools and delegation guidance are not offered to remote agents;
-    /// the caller implements directly and command_exec gets the developer toolchain.
+    /// Local agent remote callers can delegate to: "none", "codex" or "pi".
+    /// Older settings only stored codex_enabled; Store::open derives this from it.
+    pub local_agent: String,
+    /// Mirrors local_agent == "codex". When false, Codex tools and delegation guidance are not
+    /// offered to remote agents and command_exec gets the developer toolchain.
     pub codex_enabled: bool,
     pub codex_path: String,
+    pub pi_path: String,
+}
+impl Settings {
+    pub fn pi_enabled(&self) -> bool {
+        self.local_agent == "pi"
+    }
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -51,8 +61,10 @@ impl Default for Settings {
             public_url: String::new(),
             result_chars: 6000,
             command_timeout_seconds: 3600,
+            local_agent: "codex".into(),
             codex_enabled: true,
             codex_path: find_binary("codex"),
+            pi_path: find_binary("pi"),
         }
     }
 }
@@ -120,15 +132,26 @@ impl Store {
             .map_err(err)?;
         db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS scopes (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, time TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, success INTEGER NOT NULL);").map_err(err)?;
         crate::executions::init(&db)?;
-        let settings = db
+        let mut settings: Settings = db
             .query_row("SELECT value FROM settings WHERE key='settings'", [], |r| {
                 r.get::<_, String>(0)
             })
             .ok()
-            .map(|s| serde_json::from_str(&s))
+            .map(|s| serde_json::from_str::<Value>(&s))
+            .transpose()
+            .map_err(err)?
+            .map(|mut stored| {
+                // Settings saved before the local agent choice existed only know codex_enabled.
+                if stored.get("local_agent").is_none() {
+                    let codex = stored["codex_enabled"].as_bool().unwrap_or(true);
+                    stored["local_agent"] = Value::from(if codex { "codex" } else { "none" });
+                }
+                serde_json::from_value(stored)
+            })
             .transpose()
             .map_err(err)?
             .unwrap_or_default();
+        settings.codex_enabled = settings.local_agent == "codex";
         let token: String = db
             .query_row("SELECT value FROM settings WHERE key='token'", [], |r| {
                 r.get(0)
@@ -169,8 +192,16 @@ impl Store {
         if !(1..=86400).contains(&s.command_timeout_seconds) {
             return Err("命令执行时限应为 1–86400 秒".into());
         }
+        let mut s = s;
+        if !matches!(s.local_agent.as_str(), "none" | "codex" | "pi") {
+            return Err("未知的本机委派方式".into());
+        }
+        s.codex_enabled = s.local_agent == "codex";
         if s.codex_enabled && s.codex_path.trim().is_empty() {
             return Err("Codex 可执行文件路径不能为空".into());
+        }
+        if s.pi_enabled() && s.pi_path.trim().is_empty() {
+            return Err("Pi 可执行文件路径不能为空".into());
         }
         if !matches!(s.tunnel_mode.as_str(), "quick" | "named") {
             return Err("未知隧道模式".into());
@@ -355,4 +386,40 @@ fn new_token() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::Store;
+
+    #[test]
+    fn older_codex_toggle_maps_to_the_local_agent_choice() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("data");
+        {
+            let store = Store::open(dir.clone()).unwrap();
+            assert_eq!(store.config().local_agent, "codex");
+            store
+                .db
+                .lock()
+                .unwrap()
+                .execute(
+                    "INSERT OR REPLACE INTO settings VALUES ('settings', ?)",
+                    [r#"{"port":8787,"codex_enabled":false,"codex_path":"codex"}"#],
+                )
+                .unwrap();
+        }
+        let store = Store::open(dir).unwrap();
+        let settings = store.config();
+        assert_eq!(settings.local_agent, "none");
+        assert!(!settings.codex_enabled && !settings.pi_enabled());
+
+        let mut changed = settings.clone();
+        changed.local_agent = "elsewhere".into();
+        assert!(store.save_settings(changed).is_err());
+        let mut changed = settings;
+        changed.local_agent = "codex".into();
+        store.save_settings(changed).unwrap();
+        assert!(store.config().codex_enabled);
+    }
 }

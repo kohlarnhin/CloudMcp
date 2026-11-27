@@ -12,12 +12,21 @@ import { RotateTokenDialog } from './RotateTokenDialog';
 import { Alert, AlertDescription } from './ui/alert';
 import { Input } from './ui/input';
 import { SegmentedControl } from './ui/segmented-control';
-import { Switch } from './ui/switch';
 
 const tunnelModes = [
   { value: 'quick', label: '临时隧道' },
   { value: 'named', label: '固定隧道' },
 ] as const;
+const localAgents = [
+  { value: 'none', label: '不委派' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'pi', label: 'Pi' },
+] as const;
+const agentHelp: Record<Settings['local_agent'], string> = {
+  none: '不提供本机 Agent，由调用方直接用文件与命令工具完成开发。',
+  codex: '提供 codex_exec、codex_portal 与 codex-delegate 委派说明，由本机 Codex 实施。',
+  pi: '提供 pi_exec，由本机 Pi 用自己的模型、MCP 与 codemode 实施；调用方负责验收。',
+};
 const pathInput = 'w-1/2 max-w-[270px] shrink-0 font-mono text-xs';
 
 function SettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -133,24 +142,25 @@ export function SettingsPage({ data, refresh, appearance }: {
         </div>
       </SettingsSection>
 
-      <SettingsSection id="settings-codex" title="Codex 委派">
+      <SettingsSection id="settings-agent" title="本机委派">
         <fieldset disabled={locked} className="min-w-0">
           <div className="h1-list-row">
             <div className="min-w-0">
-              <label htmlFor="codex-enabled" className="text-sm font-medium">使用 Codex</label>
-              <p id="codex-enabled-help" className="settings-help">
-                {settings.codex_enabled
-                  ? '向远端提供 codex_exec、codex_portal 与 codex-delegate 委派说明，由本机 Codex 实施。'
-                  : '不加载 Codex 工具与委派说明，由调用方直接用文件与命令工具完成开发。'}
-              </p>
+              <p id="settings-local-agent" className="text-sm font-medium">委派给</p>
+              <p id="settings-local-agent-help" className="settings-help">{agentHelp[settings.local_agent]}</p>
             </div>
-            <Switch id="codex-enabled" checked={settings.codex_enabled} disabled={locked}
-              onCheckedChange={value => update('codex_enabled', value)} aria-describedby="codex-enabled-help" />
+            <SegmentedControl labelledBy="settings-local-agent" value={settings.local_agent} options={localAgents} disabled={locked}
+              className="dash-segments" onChange={value => update('local_agent', value)} />
           </div>
-          {settings.codex_enabled ? <SettingsField id="codex-path" label="Codex 可执行文件" description="使用本机 Codex 的账号和配置。">
+          {settings.local_agent === 'codex' && <SettingsField id="codex-path" label="Codex 可执行文件" description="使用本机 Codex 的账号和配置。">
             <Input id="codex-path" required value={settings.codex_path} title={settings.codex_path}
               onChange={event => update('codex_path', event.target.value)} aria-describedby="codex-path-help" className={pathInput} />
-          </SettingsField> : <div className="h1-list-row settings-toolchain" data-toolchain-note>
+          </SettingsField>}
+          {settings.local_agent === 'pi' && <SettingsField id="pi-path" label="Pi 可执行文件" description="使用 ~/.pi 中的模型、密钥、MCP 与 codemode 配置。">
+            <Input id="pi-path" required value={settings.pi_path} title={settings.pi_path}
+              onChange={event => update('pi_path', event.target.value)} aria-describedby="pi-path-help" className={pathInput} />
+          </SettingsField>}
+          {settings.local_agent !== 'codex' && <div className="h1-list-row settings-toolchain" data-toolchain-note>
             <TerminalSquare size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">命令放开开发工具链</p>

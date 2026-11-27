@@ -28,7 +28,9 @@ pub fn cert_path(store: &Store) -> PathBuf {
 }
 /// Credentials of a tunnel CloudMCP created itself, keyed by tunnel name.
 pub fn credentials_path(store: &Store, tunnel_name: &str) -> PathBuf {
-    home(store).join("tunnels").join(format!("{tunnel_name}.json"))
+    home(store)
+        .join("tunnels")
+        .join(format!("{tunnel_name}.json"))
 }
 pub fn logged_in(store: &Store) -> bool {
     cert_path(store).is_file()
@@ -182,7 +184,15 @@ pub async fn setup(store: &Store, hostname: &str) -> AppResult<Value> {
     if managed_tunnel_id(store, &name).is_none() {
         let created = run(
             store,
-            &["tunnel", "--origincert", &cert, "create", "--credentials-file", &creds_arg, &name],
+            &[
+                "tunnel",
+                "--origincert",
+                &cert,
+                "create",
+                "--credentials-file",
+                &creds_arg,
+                &name,
+            ],
         )
         .await;
         if let Err(e) = created {
@@ -192,7 +202,15 @@ pub async fn setup(store: &Store, hostname: &str) -> AppResult<Value> {
             // The tunnel exists on the account but its credentials are missing here; fetch them.
             run(
                 store,
-                &["tunnel", "--origincert", &cert, "token", "--credentials-file", &creds_arg, &name],
+                &[
+                    "tunnel",
+                    "--origincert",
+                    &cert,
+                    "token",
+                    "--credentials-file",
+                    &creds_arg,
+                    &name,
+                ],
             )
             .await
             .map_err(|e| format!("读取已有隧道凭据失败：{e}"))?;
@@ -201,7 +219,16 @@ pub async fn setup(store: &Store, hostname: &str) -> AppResult<Value> {
     let id = managed_tunnel_id(store, &name).ok_or("隧道凭据文件无效，请重试")?;
     run(
         store,
-        &["tunnel", "--origincert", &cert, "route", "dns", "--overwrite-dns", &id, &host],
+        &[
+            "tunnel",
+            "--origincert",
+            &cert,
+            "route",
+            "dns",
+            "--overwrite-dns",
+            &id,
+            &host,
+        ],
     )
     .await
     .map_err(|e| format!("配置 DNS 失败（域名需托管在当前登录的 Cloudflare 账号下）：{e}"))?;
@@ -221,9 +248,22 @@ mod tests {
 
     #[test]
     fn hostnames_are_normalized_and_validated() {
-        assert_eq!(normalize_hostname(" https://MCP.Example.com/mcp ").unwrap(), "mcp.example.com");
-        assert_eq!(normalize_hostname("a-b.example.co.uk").unwrap(), "a-b.example.co.uk");
-        for bad in ["", "localhost", "-a.example.com", "a..com", "a b.com", "a_b.com"] {
+        assert_eq!(
+            normalize_hostname(" https://MCP.Example.com/mcp ").unwrap(),
+            "mcp.example.com"
+        );
+        assert_eq!(
+            normalize_hostname("a-b.example.co.uk").unwrap(),
+            "a-b.example.co.uk"
+        );
+        for bad in [
+            "",
+            "localhost",
+            "-a.example.com",
+            "a..com",
+            "a b.com",
+            "a_b.com",
+        ] {
             assert!(normalize_hostname(bad).is_err(), "{bad}");
         }
         assert_eq!(tunnel_name("mcp.example.com"), "cloudmcp-mcp-example-com");
@@ -237,7 +277,14 @@ mod tests {
         assert_eq!(managed_tunnel_id(&store, "cloudmcp-a-com"), None);
         let creds = credentials_path(&store, "cloudmcp-a-com");
         std::fs::create_dir_all(creds.parent().unwrap()).unwrap();
-        std::fs::write(&creds, r#"{"AccountTag":"x","TunnelSecret":"y","TunnelID":"0b1c"}"#).unwrap();
-        assert_eq!(managed_tunnel_id(&store, "cloudmcp-a-com").as_deref(), Some("0b1c"));
+        std::fs::write(
+            &creds,
+            r#"{"AccountTag":"x","TunnelSecret":"y","TunnelID":"0b1c"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            managed_tunnel_id(&store, "cloudmcp-a-com").as_deref(),
+            Some("0b1c")
+        );
     }
 }
