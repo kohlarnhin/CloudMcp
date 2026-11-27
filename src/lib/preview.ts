@@ -130,6 +130,7 @@ const snapshot: Snapshot = {
     public_url: publicUrl,
     result_chars: 6000,
     command_timeout_seconds: 3600,
+    codex_enabled: true,
     codex_path: 'codex',
   },
   scopes,
@@ -161,7 +162,16 @@ function previewPortal(): PortalStatus {
 export function previewNative(command: string, args?: Record<string, unknown>) {
   switch (command) {
     case 'snapshot':
-      return snapshot;
+      return { ...snapshot, settings: { ...snapshot.settings } };
+    case 'save_settings':
+      Object.assign(snapshot.settings, args?.settings);
+      return null;
+    case 'stop_server':
+      Object.assign(snapshot, { server_running: false, tunnel_running: false, public_url: null });
+      return null;
+    case 'start_server':
+      snapshot.server_running = true;
+      return null;
     case 'execution_detail': {
       const run = runs.find(({ workspace, run_id }) => workspace === args?.workspace && run_id === args?.runId);
       if (!run) throw new Error('找不到执行记录');

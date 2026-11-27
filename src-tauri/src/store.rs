@@ -36,6 +36,9 @@ pub struct Settings {
     pub public_url: String,
     pub result_chars: usize,
     pub command_timeout_seconds: u64,
+    /// When false, Codex tools and delegation guidance are not offered to remote agents;
+    /// the caller implements directly and command_exec gets the developer toolchain.
+    pub codex_enabled: bool,
     pub codex_path: String,
 }
 impl Default for Settings {
@@ -48,6 +51,7 @@ impl Default for Settings {
             public_url: String::new(),
             result_chars: 6000,
             command_timeout_seconds: 3600,
+            codex_enabled: true,
             codex_path: find_binary("codex"),
         }
     }
@@ -165,7 +169,7 @@ impl Store {
         if !(1..=86400).contains(&s.command_timeout_seconds) {
             return Err("命令执行时限应为 1–86400 秒".into());
         }
-        if s.codex_path.trim().is_empty() {
+        if s.codex_enabled && s.codex_path.trim().is_empty() {
             return Err("Codex 可执行文件路径不能为空".into());
         }
         if !matches!(s.tunnel_mode.as_str(), "quick" | "named") {

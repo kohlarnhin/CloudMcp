@@ -1,19 +1,17 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Check, Loader2, LockKeyhole, ShieldAlert } from 'lucide-react';
+import { Check, Loader2, LockKeyhole, ShieldAlert, TerminalSquare } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppUpdateController } from '../hooks/useAppUpdate';
 import type { AppearanceController } from '../hooks/useAppearance';
 import { appearances } from '../lib/appearance';
 import { localEndpoint } from '../lib/connection';
 import { native } from '../lib/desktop';
-import type { Execution, Settings, Snapshot } from '../types';
-import { AppUpdateRow } from './AppUpdateRow';
+import type { Settings, Snapshot } from '../types';
 import { CopyButton } from './CopyButton';
-import { Diagnostics } from './Diagnostics';
 import { RotateTokenDialog } from './RotateTokenDialog';
 import { Alert, AlertDescription } from './ui/alert';
 import { Input } from './ui/input';
 import { SegmentedControl } from './ui/segmented-control';
+import { Switch } from './ui/switch';
 
 const tunnelModes = [
   { value: 'quick', label: '临时隧道' },
@@ -43,21 +41,17 @@ function SettingsField({ id, label, description, children }: {
   </div>;
 }
 
-export function SettingsPage({ data, refresh, appearance, appUpdate, diagnosticsOpen, onDiagnosticsToggle, onOpenExecutions, onOpenExecution }: {
+export function SettingsPage({ data, refresh, appearance }: {
   data: Snapshot;
   refresh: () => Promise<void>;
   appearance: AppearanceController;
-  appUpdate: AppUpdateController;
-  diagnosticsOpen: boolean;
-  onDiagnosticsToggle: (open: boolean) => void;
-  onOpenExecutions: () => void;
-  onOpenExecution: (run: Execution) => void;
 }) {
   const [draft, setDraft] = useState<Partial<Settings>>({});
   const [saving, setSaving] = useState(false);
   const [rotating, setRotating] = useState(false);
   const settings = { ...data.settings, ...draft };
   const locked = data.server_running || saving;
+  const dirty = Object.keys(draft).length > 0;
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setDraft(current => ({ ...current, [key]: value }));
@@ -80,8 +74,11 @@ export function SettingsPage({ data, refresh, appearance, appUpdate, diagnostics
 
   return <>
     <header className="dash-page-heading">
-      <h1>设置</h1>
-      <button type="submit" form="settings-form" className="h1-button h1-button-primary" disabled={locked} data-save-settings>
+      <div>
+        <h1>设置</h1>
+        <p className="dash-page-description">连接、执行方式与外观。修改需在服务停止时保存。</p>
+      </div>
+      <button type="submit" form="settings-form" className="h1-button h1-button-primary" disabled={locked || !dirty} data-save-settings>
         {saving ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}保存设置
       </button>
     </header>
@@ -138,6 +135,36 @@ export function SettingsPage({ data, refresh, appearance, appUpdate, diagnostics
         </div>
       </SettingsSection>
 
+      <SettingsSection id="settings-codex" title="Codex 委派">
+        <fieldset disabled={locked} className="min-w-0">
+          <div className="h1-list-row">
+            <div className="min-w-0">
+              <label htmlFor="codex-enabled" className="text-sm font-medium">使用 Codex</label>
+              <p id="codex-enabled-help" className="settings-help">
+                {settings.codex_enabled
+                  ? '向远端提供 codex_exec、codex_portal 与 codex-delegate 委派说明，由本机 Codex 实施。'
+                  : '不加载 Codex 工具与委派说明，由调用方直接用文件与命令工具完成开发。'}
+              </p>
+            </div>
+            <Switch id="codex-enabled" checked={settings.codex_enabled} disabled={locked}
+              onCheckedChange={value => update('codex_enabled', value)} aria-describedby="codex-enabled-help" />
+          </div>
+          {settings.codex_enabled ? <SettingsField id="codex-path" label="Codex 可执行文件" description="使用本机 Codex 的账号和配置。">
+            <Input id="codex-path" required value={settings.codex_path} title={settings.codex_path}
+              onChange={event => update('codex_path', event.target.value)} aria-describedby="codex-path-help" className={pathInput} />
+          </SettingsField> : <div className="h1-list-row settings-toolchain" data-toolchain-note>
+            <TerminalSquare size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">命令放开开发工具链</p>
+              <p className="settings-help">
+                command_exec 使用你的主目录，可用 git（含 SSH 与全局配置）、cargo / rustup、pnpm / npm / yarn / bun 与 Xcode 命令行工具；
+                写入仍限于授权目录、工具链缓存和临时目录。
+              </p>
+            </div>
+          </div>}
+        </fieldset>
+      </SettingsSection>
+
       <SettingsSection id="settings-execution" title="执行">
         <fieldset disabled={locked} className="min-w-0">
           <SettingsField id="command-timeout" label="默认执行时限（秒）" description="默认 3,600 秒，最多 86,400 秒。">
@@ -147,10 +174,6 @@ export function SettingsPage({ data, refresh, appearance, appUpdate, diagnostics
           <SettingsField id="result-limit" label="命令输出字符上限" description="单个文本字段按此上限截断。每条原始输出流最多保存 16 MiB。">
             <Input id="result-limit" type="number" min={1000} max={16000} required value={settings.result_chars}
               onChange={event => update('result_chars', Number(event.target.value))} aria-describedby="result-limit-help" className="w-28 shrink-0 tabular-nums" />
-          </SettingsField>
-          <SettingsField id="codex-path" label="Codex 可执行文件" description="使用本机 Codex 的账号和配置。">
-            <Input id="codex-path" required value={settings.codex_path} title={settings.codex_path}
-              onChange={event => update('codex_path', event.target.value)} aria-describedby="codex-path-help" className={pathInput} />
           </SettingsField>
         </fieldset>
       </SettingsSection>
@@ -164,16 +187,6 @@ export function SettingsPage({ data, refresh, appearance, appUpdate, diagnostics
       </div>
     </SettingsSection>
 
-    <SettingsSection id="settings-about" title="关于">
-      <AppUpdateRow controller={appUpdate} />
-      <div className="h1-list-row">
-        <p className="shrink-0 text-sm font-medium">本机数据</p>
-        <code className="dash-truncate select-text text-xs text-muted-foreground" title={data.data_dir}>{data.data_dir || '系统应用数据目录'}</code>
-      </div>
-    </SettingsSection>
-
-    <Diagnostics data={data} open={diagnosticsOpen} onToggle={onDiagnosticsToggle}
-      onOpenExecutions={onOpenExecutions} onOpenExecution={onOpenExecution} />
     {rotating && <RotateTokenDialog onClose={() => setRotating(false)} />}
   </>;
 }

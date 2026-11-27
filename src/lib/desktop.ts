@@ -15,6 +15,7 @@ export const initialSnapshot: Snapshot = {
     public_url: '',
     result_chars: 6000,
     command_timeout_seconds: 3600,
+    codex_enabled: true,
     codex_path: 'codex',
   },
   scopes: [],

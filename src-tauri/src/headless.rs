@@ -12,6 +12,7 @@ struct Config {
     token: Option<String>,
     command_timeout_seconds: Option<u64>,
     codex_path: Option<String>,
+    codex_enabled: Option<bool>,
     #[serde(default)]
     directories: Vec<Directory>,
 }
@@ -45,6 +46,7 @@ pub fn run(path: &str) -> AppResult<()> {
     if config.port.is_some()
         || config.command_timeout_seconds.is_some()
         || config.codex_path.is_some()
+        || config.codex_enabled.is_some()
     {
         let mut settings = store.config();
         if let Some(port) = config.port {
@@ -52,6 +54,9 @@ pub fn run(path: &str) -> AppResult<()> {
         }
         if let Some(timeout) = config.command_timeout_seconds {
             settings.command_timeout_seconds = timeout;
+        }
+        if let Some(enabled) = config.codex_enabled {
+            settings.codex_enabled = enabled;
         }
         if let Some(path) = config.codex_path {
             settings.codex_path = expand(&path)?.to_string_lossy().into_owned();

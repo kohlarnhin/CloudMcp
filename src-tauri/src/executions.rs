@@ -428,6 +428,9 @@ pub async fn command(store: Arc<Store>, p: CommandArgs) -> AppResult<Value> {
     .await
 }
 pub async fn codex(store: Arc<Store>, p: CodexArgs) -> AppResult<Value> {
+    if !store.config().codex_enabled {
+        return Err("本机已关闭 Codex 委派；请直接使用 fs_* 与 command_exec 完成".into());
+    }
     if p.prompt.trim().is_empty() || p.prompt.len() > 65536 || p.acceptance_criteria.len() > 16000 {
         return Err("Codex 要求不能为空，最多 64 KiB；验收条件最多 16 KiB".into());
     }

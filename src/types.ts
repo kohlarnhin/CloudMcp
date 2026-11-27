@@ -13,6 +13,7 @@ export interface Settings {
   public_url: string;
   result_chars: number;
   command_timeout_seconds: number;
+  codex_enabled: boolean;
   codex_path: string;
 }
 

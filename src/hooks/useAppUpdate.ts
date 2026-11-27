@@ -8,19 +8,36 @@ type UpdateState =
   | { status: 'idle' | 'checking' | 'installing' | 'installed' }
   | { status: 'available'; update: Update };
 
-export function useAppUpdate() {
+/** 后台定期检查更新的间隔：启动时一次，之后每 6 小时一次。 */
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+export function useAppUpdate(onOpen?: () => void) {
   const [state, setState] = useState<UpdateState>({ status: 'idle' });
   const busy = useRef(false);
+  const announced = useRef<string | null>(null);
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const checkForUpdate = useCallback(async (manual = true) => {
     if (!desktop || busy.current) return;
+    // 后台检查不覆盖已发现或正在安装的更新。
+    if (!manual && stateRef.current.status !== 'idle') return;
     busy.current = true;
     setState({ status: 'checking' });
     try {
       const update = await check({ timeout: 15_000 });
       if (update) {
         setState({ status: 'available', update });
-        if (!manual) toast.info(`CloudMCP v${update.version} 已发布`, { description: '打开「设置 → 关于」安装更新。' });
+        if (!manual && announced.current !== update.version) {
+          announced.current = update.version;
+          toast.info(`CloudMCP v${update.version} 已发布`, {
+            description: '安装后应用会重启并停止正在运行的执行。',
+            duration: Infinity,
+            action: openRef.current ? { label: '查看更新', onClick: () => openRef.current?.() } : undefined,
+          });
+        }
         return;
       }
       if (manual) toast.success('CloudMCP 已是最新版本');
@@ -33,7 +50,10 @@ export function useAppUpdate() {
   }, []);
 
   useEffect(() => {
-    if (import.meta.env.PROD) void checkForUpdate(false);
+    if (!import.meta.env.PROD) return;
+    void checkForUpdate(false);
+    const interval = window.setInterval(() => { void checkForUpdate(false); }, CHECK_INTERVAL_MS);
+    return () => window.clearInterval(interval);
   }, [checkForUpdate]);
 
   const installUpdate = async () => {

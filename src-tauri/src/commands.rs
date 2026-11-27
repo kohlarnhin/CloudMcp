@@ -90,10 +90,11 @@ pub fn rotate_token(state: State<'_, Arc<Store>>) -> AppResult<String> {
 pub async fn dependencies(state: State<'_, Arc<Store>>) -> AppResult<Value> {
     let config = state.config();
     let mut entries = Vec::new();
-    for (name, path) in [
-        ("cloudflared", tunnel::executable(&config.cloudflared_path)),
-        ("codex", PathBuf::from(config.codex_path)),
-    ] {
+    let mut checks = vec![("cloudflared", tunnel::executable(&config.cloudflared_path))];
+    if config.codex_enabled {
+        checks.push(("codex", PathBuf::from(config.codex_path)));
+    }
+    for (name, path) in checks {
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             tokio::process::Command::new(&path)

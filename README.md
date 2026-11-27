@@ -67,6 +67,16 @@ git push origin 0.1.1
 4. 复制配置与令牌，添加到远端 Agent 的 MCP 客户端。
 5. 在远端 Agent 中发起操作；它通过 MCP 调用本机工具。
 
+### 是否使用 Codex
+
+“设置 → Codex 委派 → 使用 Codex”默认开启。关闭后（需先停止服务）：
+
+- 远端不再看到 `codex_exec`、`codex_portal`，服务说明也不再包含 codex-delegate 委派流程，由调用方直接用 `fs_*` 与 `command_exec` 完成开发、验证、提交和发版；不需要导入 `codex-delegate` Skill。
+- `command_exec` 切换为开发工具链模式：`HOME` 为本机主目录，可读取 Git 全局配置（含 `~/.gitconfig*`）与 `~/.ssh`，可使用并写入 `~/.cargo`、`~/.rustup`、pnpm / npm / yarn / bun 缓存、`~/Library/Caches` 及系统临时目录，可读取 Xcode 与命令行工具；授权目录之外的其他位置仍不可写。
+- 环境检查不再检查 Codex 与 Codex Portal。
+
+无界面运行时可在配置中写 `"codex_enabled": false`。
+
 要使用完整的委派交付流程，把 `skills/codex-delegate` 整个目录导入远端 Agent 的 Skills，并在远端任务中调用 `codex-delegate`。调用者决定方案、独立验收、发起同会话返工，以及完成已授权的提交和发版。 [codex-delegate Skill](skills/codex-delegate/SKILL.md)
 
 通用 HTTP 客户端配置示例，具体字段可按远端 Harness 调整：

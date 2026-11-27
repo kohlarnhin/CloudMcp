@@ -3,7 +3,7 @@ use crate::{
     store::{AppResult, Store},
 };
 use rmcp::{
-    handler::server::wrapper::Parameters,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock as Content, ServerCapabilities, ServerConfig},
     tool, tool_handler, tool_router, ServerHandler,
 };
@@ -11,13 +11,33 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+/// Tools that only exist while Codex delegation is enabled in the local settings.
+const CODEX_TOOLS: [&str; 2] = ["codex_exec", "codex_portal"];
+
 #[derive(Clone)]
 pub struct Gateway {
     store: Arc<Store>,
+    codex_enabled: bool,
+    tool_router: ToolRouter<Self>,
 }
 impl Gateway {
     pub fn new(store: Arc<Store>) -> Self {
-        Self { store }
+        // Settings can only change while the server is stopped, so each session reads them once.
+        let codex_enabled = store.config().codex_enabled;
+        let mut tool_router = Self::tool_router();
+        if !codex_enabled {
+            for name in CODEX_TOOLS {
+                tool_router.remove_route(name);
+            }
+            if let Some(route) = tool_router.map.get_mut("command_exec") {
+                route.attr.description = Some(COMMAND_EXEC_DIRECT.into());
+            }
+        }
+        Self {
+            store,
+            codex_enabled,
+            tool_router,
+        }
     }
     fn result(&self, action: &str, target: &str, result: AppResult<Value>) -> CallToolResult {
         self.store.audit(action, target, result.is_ok());
@@ -89,6 +109,8 @@ struct SearchArgs {
     path: String,
     query: String,
 }
+const COMMAND_EXEC_DIRECT: &str = "Start a durably recorded shell command in an authorized directory, identified by workspace name. Codex delegation is off, so this is the build and delivery tool: the macOS sandbox keeps writes to authorized directories, toolchain caches and temp directories, while HOME is the user's real home with Git/SSH config, Rust (cargo, rustup), Node (pnpm, npm, yarn, bun) and Xcode command line tools available. Execution timeout defaults to the local setting (1 hour), up to 86400 seconds. wait_seconds only controls this response (0–10 seconds); a running process continues independently of HTTP and remote-agent disconnection; use execution_wait for long builds and tests. Reuse request_id on retries. Returns run_id, status and bounded output.";
+
 #[tool_router]
 impl Gateway {
     #[tool(
@@ -305,12 +327,29 @@ impl Gateway {
         self.result("fs.search", &target, result)
     }
 }
-#[tool_handler]
+const INSTRUCTIONS_DIRECT: &str = concat!(
+    "CloudMCP exposes local filesystem tools and persistent background commands to remote agents. ",
+    "Codex delegation is turned off on this machine: there is no codex_exec, and you, the calling agent, read, edit, build, test, commit and release directly. ",
+    "Start with workspace_list and use the authorized directory NAME as workspace. ",
+    "Prefer fs_edit when modifying existing files; read with fs_read line mode to locate the text first, and fs_search to find code. ",
+    "command_exec runs with the developer toolchain: Git with the user's config and SSH keys, cargo/rustup, pnpm/npm/yarn/bun, and Xcode command line tools, all inside a sandbox that only writes to authorized directories, toolchain caches and temp directories. ",
+    "Start long builds and tests with command_exec and follow them with execution_wait and execution_output instead of polling. ",
+    "Verify the diff and the project's checks yourself before committing; commit, push or release only when the user asked for it. ",
+    "When switching agents, query execution_list for the directory and inspect execution_get. Reuse request_id when retrying lost responses. ",
+    "Public home paths use ~/ as an alias for this machine's home directory. ",
+    "Use relative file paths, paginated logs and fs_image to retrieve only needed evidence."
+);
+
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for Gateway {
     fn get_info(&self) -> ServerConfig {
         let mut info = ServerConfig::default();
         info.server_info = rmcp::model::Implementation::new("cloudmcp", env!("CARGO_PKG_VERSION"));
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        if !self.codex_enabled {
+            info.instructions = Some(INSTRUCTIONS_DIRECT.into());
+            return info;
+        }
         info.instructions = Some(
             concat!(
                 "CloudMCP exposes local filesystem tools and persistent background executions to remote agents. ",
@@ -425,6 +464,50 @@ mod tests {
         let result = gateway.fs_read(Parameters(args)).await;
         assert_eq!(result.is_error, Some(true));
         assert!(result.content[0].as_text().unwrap().text.contains("二选一"));
+    }
+
+    #[test]
+    fn codex_toggle_controls_tools_and_instructions() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(temp.path().join("data")).unwrap();
+        let enabled = Gateway::new(store.clone());
+        assert!(enabled.tool_router.has_route("codex_exec"));
+        assert!(enabled.tool_router.has_route("codex_portal"));
+        assert!(enabled
+            .get_info()
+            .instructions
+            .unwrap()
+            .contains("codex-delegate"));
+
+        let mut settings = store.config();
+        settings.codex_enabled = false;
+        settings.codex_path = String::new();
+        store.save_settings(settings).unwrap();
+        let direct = Gateway::new(store.clone());
+        for name in CODEX_TOOLS {
+            assert!(!direct.tool_router.has_route(name));
+        }
+        assert!(direct.tool_router.has_route("command_exec"));
+        let names: Vec<_> = direct
+            .tool_router
+            .list_all()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(!names.iter().any(|n| n.starts_with("codex")));
+        let description = direct
+            .tool_router
+            .get("command_exec")
+            .unwrap()
+            .description
+            .clone()
+            .unwrap();
+        assert!(!description.contains("codex_exec"));
+        let instructions = direct.get_info().instructions.unwrap();
+        assert!(
+            !instructions.contains("codex_exec uses") && !instructions.contains("codex-delegate")
+        );
+        assert!(instructions.contains("calling agent"));
     }
 
     #[test]

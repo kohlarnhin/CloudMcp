@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowRight, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePortalStatus } from '../hooks/usePortalStatus';
 import { desktop, native, preview } from '../lib/desktop';
@@ -9,8 +9,7 @@ import type { Dependency, Execution, PortalAccount, Snapshot } from '../types';
 import { ActivityTable } from './ActivityTable';
 import { ExecutionTable } from './ExecutionTable';
 
-const recentLimit = 5;
-const dependencyNames = ['cloudflared', 'codex'];
+const recentLimit = 8;
 
 function QuotaMeter({ label, account, kind }: { label: string; account: PortalAccount; kind: 'short' | 'long' }) {
   const percent = clampPercent(kind === 'short' ? account.shortRemainingPercent : account.longRemainingPercent);
@@ -39,7 +38,8 @@ function PortalEnvironment() {
   </div>;
 }
 
-function Environment() {
+function Environment({ codexEnabled }: { codexEnabled: boolean }) {
+  const dependencyNames = codexEnabled ? ['cloudflared', 'codex'] : ['cloudflared'];
   const [dependencies, setDependencies] = useState<Dependency[] | null>(null);
   const [checking, setChecking] = useState(false);
   const check = useCallback(async () => {
@@ -54,7 +54,7 @@ function Environment() {
   }, []);
   useEffect(() => {
     if (desktop || preview) void check();
-  }, [check]);
+  }, [check, codexEnabled]);
 
   return <section className="dash-section" aria-labelledby="diagnostics-environment">
     <header className="dash-section-heading">
@@ -80,38 +80,36 @@ function Environment() {
           </span>
         </div>;
       })}
-      {(desktop || preview) && <PortalEnvironment />}
+      {codexEnabled && (desktop || preview) && <PortalEnvironment />}
     </div>
   </section>;
 }
 
-export function Diagnostics({ data, open, onToggle, onOpenExecutions, onOpenExecution }: {
+export function DiagnosticsPage({ data, onOpenExecutions, onOpenExecution }: {
   data: Snapshot;
-  open: boolean;
-  onToggle: (open: boolean) => void;
   onOpenExecutions: () => void;
   onOpenExecution: (run: Execution) => void;
 }) {
-  return <details className="h1-group settings-diagnostics" open={open} onToggle={event => onToggle(event.currentTarget.open)}>
-    <summary id="diagnostics-summary">
-      <span>诊断 <small>（排障时使用）</small></span>
-      <ChevronDown size={15} aria-hidden="true" />
-    </summary>
-    {open && <div className="diagnostics-content">
-      <section className="dash-section" aria-labelledby="diagnostics-executions">
-        <header className="dash-section-heading">
-          <h2 className="h1-group-title" id="diagnostics-executions">最近执行</h2>
-          <button type="button" className="h1-tag" onClick={onOpenExecutions}>
-            查看全部执行 <ArrowRight size={12} aria-hidden="true" />
-          </button>
-        </header>
-        <ExecutionTable executions={data.executions.slice(0, recentLimit)} onOpen={onOpenExecution} />
-      </section>
-      <section className="dash-section" aria-labelledby="diagnostics-activity">
-        <h2 className="h1-group-title dash-section-title" id="diagnostics-activity">最近访问</h2>
-        <ActivityTable audit={data.audit.slice(0, recentLimit)} />
-      </section>
-      <Environment />
-    </div>}
-  </details>;
+  return <>
+    <header className="dash-page-heading">
+      <div>
+        <h1>诊断</h1>
+        <p className="dash-page-description">排查连接、执行与运行环境时使用。</p>
+      </div>
+    </header>
+    <section className="dash-section" aria-labelledby="diagnostics-executions">
+      <header className="dash-section-heading">
+        <h2 className="h1-group-title" id="diagnostics-executions">最近执行</h2>
+        <button type="button" className="h1-tag" onClick={onOpenExecutions}>
+          查看全部 <ArrowRight size={12} aria-hidden="true" />
+        </button>
+      </header>
+      <ExecutionTable executions={data.executions.slice(0, recentLimit)} onOpen={onOpenExecution} />
+    </section>
+    <section className="dash-section" aria-labelledby="diagnostics-activity">
+      <h2 className="h1-group-title dash-section-title" id="diagnostics-activity">最近访问</h2>
+      <ActivityTable audit={data.audit.slice(0, recentLimit)} />
+    </section>
+    <Environment codexEnabled={data.settings.codex_enabled} />
+  </>;
 }
