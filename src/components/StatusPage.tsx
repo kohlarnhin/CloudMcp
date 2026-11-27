@@ -21,6 +21,9 @@ function serviceStatus(data: Snapshot, addressChanged: boolean) {
 
   const tunnel = tunnelTone(data);
   if (!data.tunnel_running || tunnel !== 'running') {
+    if (data.tunnel_running && data.tunnel_error) {
+      return { title: '隧道重连中', tone: 'warning', reason: data.tunnel_error };
+    }
     const reason = data.tunnel_running ? '正在等待隧道分配公网地址。' : '连接隧道后可使用公网地址。';
     return { title: '隧道未连接', tone: data.tunnel_error ? 'error' : 'idle', reason: data.tunnel_error ?? reason };
   }
@@ -40,7 +43,7 @@ export function StatusPage({ data, busy, action }: { data: Snapshot; busy: strin
   const publicUrl = data.public_url;
   const addressChanged = Boolean(publicUrl && lastUrl && publicUrl !== lastUrl);
   const status = serviceStatus(data, addressChanged);
-  const online = status.tone === 'running' || status.tone === 'warning';
+  const online = data.server_running && data.tunnel_running && tunnelTone(data) === 'running';
   const publicAddress = online ? publicEndpoint(publicUrl) : null;
   const running = runningCount(data.executions);
   const serverAction = data.server_running ? 'stop_server' : 'start_server';

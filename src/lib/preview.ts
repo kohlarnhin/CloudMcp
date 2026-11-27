@@ -1,4 +1,4 @@
-import type { Audit, Dependency, Execution, PortalStatus, Scope, Snapshot } from '../types';
+import type { Audit, Dependency, Execution, PortalStatus, ProxyServer, Scope, Snapshot } from '../types';
 
 const publicUrl = 'https://preview.cloudmcp.invalid';
 const scopes: Scope[] = [
@@ -162,6 +162,11 @@ function previewPortal(): PortalStatus {
   };
 }
 
+const proxyServers: ProxyServer[] = [
+  { name: 'filesystem', enabled: true, transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '~/Projects'], env: {}, cwd: '', url: '', headers: {}, description: '读写 ~/Projects 下的文件', source: 'Pi', connected: true },
+  { name: 'figma-local', enabled: false, transport: 'http', command: '', args: [], env: {}, cwd: '', url: 'http://127.0.0.1:3845/mcp', headers: {}, description: '', source: '' },
+];
+
 export function previewNative(command: string, args?: Record<string, unknown>) {
   switch (command) {
     case 'snapshot':
@@ -183,6 +188,34 @@ export function previewNative(command: string, args?: Record<string, unknown>) {
       Object.assign(snapshot.settings, { tunnel_mode: 'named', tunnel_name: 'cloudmcp-' + hostname.replaceAll('.', '-'), public_url: 'https://' + hostname });
       snapshot.cloudflare.managed_tunnel = true;
       return { hostname };
+    }
+    case 'proxy_list':
+      return proxyServers.map(server => ({ ...server }));
+    case 'proxy_toggle': {
+      const server = proxyServers.find(s => s.name === args?.name);
+      if (server) server.enabled = Boolean(args?.enabled);
+      return null;
+    }
+    case 'proxy_save': {
+      const next = args?.server as ProxyServer;
+      const index = proxyServers.findIndex(s => s.name === (args?.original ?? next.name));
+      if (index >= 0) proxyServers[index] = next; else proxyServers.push(next);
+      return null;
+    }
+    case 'proxy_remove':
+      proxyServers.splice(proxyServers.findIndex(s => s.name === args?.name), 1);
+      return null;
+    case 'proxy_test':
+      return new Promise(resolve => setTimeout(() => resolve({ server: args?.name, tools: ['read_file', 'write_file', 'list_directory'] }), 600));
+    case 'proxy_import_sources':
+      return [{ source: 'Pi', path: '~/.pi/agent/mcp.json', skipped: ['legacy（SSE 传输不支持）'], error: null, servers: [
+        { name: 'github', enabled: true, transport: 'http', command: '', args: [], env: {}, cwd: '', url: 'https://api.githubcopilot.com/mcp/', headers: { Authorization: 'Bearer ${GITHUB_TOKEN}' }, description: '', source: 'Pi' },
+        { name: 'filesystem', enabled: true, transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '~/Projects'], env: {}, cwd: '', url: '', headers: {}, description: '', source: 'Pi' },
+      ] }];
+    case 'proxy_import': {
+      const servers = args?.servers as ProxyServer[];
+      proxyServers.push(...servers);
+      return servers.map(s => s.name);
     }
     case 'start_server':
       snapshot.server_running = true;

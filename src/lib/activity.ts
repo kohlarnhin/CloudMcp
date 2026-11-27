@@ -9,6 +9,8 @@ const actionNames: Record<string, string> = {
   'server.start': '启动服务',
   'server.stop': '停止服务',
   'tunnel.start': '连接隧道',
+  'tunnel.wake': '唤醒后检查隧道',
+  'tunnel.restart': '自动重连隧道',
   'token.rotate': '更新令牌',
   'workspace.list': '查询目录',
   'command.exec': '执行目录内命令',

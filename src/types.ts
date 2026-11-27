@@ -95,3 +95,26 @@ export interface PortalStatus {
   allExhausted: boolean;
   earliestRecoveryAt: string | null;
 }
+
+export interface ProxyServer {
+  name: string;
+  enabled: boolean;
+  transport: 'stdio' | 'http';
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  cwd: string;
+  url: string;
+  headers: Record<string, string>;
+  description: string;
+  source: string;
+  connected?: boolean;
+}
+
+export interface ImportSource {
+  source: string;
+  path: string;
+  servers: ProxyServer[];
+  skipped: string[];
+  error: string | null;
+}

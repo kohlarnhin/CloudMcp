@@ -6,6 +6,7 @@ mod headless;
 mod mcp;
 mod portal;
 mod privacy;
+mod proxy;
 mod server;
 mod shell;
 mod store;
@@ -48,7 +49,14 @@ pub fn run() {
             commands::portal_status,
             commands::cloudflare_login,
             commands::cloudflare_logout,
-            commands::cloudflare_setup
+            commands::cloudflare_setup,
+            commands::proxy_list,
+            commands::proxy_save,
+            commands::proxy_remove,
+            commands::proxy_toggle,
+            commands::proxy_test,
+            commands::proxy_import_sources,
+            commands::proxy_import
         ])
         .build(tauri::generate_context!())
         .expect("CloudMCP 启动失败")

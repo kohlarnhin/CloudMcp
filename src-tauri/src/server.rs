@@ -87,6 +87,7 @@ pub async fn start(store: Arc<Store>) -> AppResult<()> {
 }
 pub fn stop(store: &Store) {
     store.cancel_commands();
+    crate::proxy::disconnect_all(store);
     let mut live = store.live.lock().unwrap();
     if let Some(c) = live.tunnel.take() {
         c.cancel();

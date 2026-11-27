@@ -470,3 +470,17 @@
 .settings-manual[open] > summary svg { transform: rotate(180deg); }
 .settings-manual > .h1-list-row { border-top: .5px solid var(--h1-line); }
 .settings-manual + .h1-list-row { border-top: .5px solid var(--h1-line); }
+
+.proxy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 60px;
+  padding: 10px 12px 10px 15px;
+}
+.proxy-row + .proxy-row { border-top: .5px solid var(--h1-line); }
+.proxy-row-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.proxy-row-target { color: hsl(var(--muted-foreground)); font-size: 11.5px; }
+.proxy-row-actions { display: flex; flex: none; align-items: center; gap: 4px; }
+.proxy-row-actions .h1-switch { margin-left: 6px; }

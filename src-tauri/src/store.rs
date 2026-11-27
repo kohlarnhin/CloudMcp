@@ -118,6 +118,8 @@ pub struct Store {
     pub token: Mutex<String>,
     pub live: Mutex<LiveState>,
     pub roots: Mutex<HashMap<String, Arc<cap_std::fs::Dir>>>,
+    /// Live connections to forwarded local MCP servers.
+    pub proxy: crate::proxy::Pool,
 }
 impl Store {
     pub fn open(dir: PathBuf) -> AppResult<Arc<Self>> {
@@ -169,6 +171,7 @@ impl Store {
             token: Mutex::new(token),
             live: Mutex::new(LiveState::default()),
             roots: Mutex::new(HashMap::new()),
+            proxy: Default::default(),
         });
         for scope in store.scopes()? {
             if let Ok(root) =

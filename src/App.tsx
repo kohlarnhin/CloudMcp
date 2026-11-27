@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Activity, FolderKey, Info, ListChecks, SlidersHorizontal, Stethoscope, type LucideIcon } from 'lucide-react';
+import { Activity, FolderKey, Info, ListChecks, Plug, SlidersHorizontal, Stethoscope, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { AboutPage } from './components/AboutPage';
 import { AddDirectoryDialog } from './components/AddDirectoryDialog';
@@ -9,6 +9,7 @@ import { DirectoriesPage } from './components/DirectoriesPage';
 import { ExecutionPage } from './components/ExecutionPage';
 import { ExecutionTable } from './components/ExecutionTable';
 import { Logo } from './components/Logo';
+import { McpPage } from './components/McpPage';
 import { SettingsPage } from './components/SettingsPage';
 import { SidebarStatus } from './components/SidebarStatus';
 import { StatusPage } from './components/StatusPage';
@@ -21,7 +22,7 @@ import { desktop } from './lib/desktop';
 import { runningCount } from './lib/executions';
 import type { Execution } from './types';
 
-type Page = 'status' | 'directories' | 'executions' | 'diagnostics' | 'settings' | 'about';
+type Page = 'status' | 'directories' | 'mcp' | 'executions' | 'diagnostics' | 'settings' | 'about';
 type View =
   | { page: Page }
   | { page: 'execution'; workspace: string; runId: string; back: 'executions' | 'diagnostics' };
@@ -38,6 +39,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { id: 'status', label: '服务状态', icon: Activity },
       { id: 'directories', label: '授权目录', icon: FolderKey },
+      { id: 'mcp', label: 'MCP 转发', icon: Plug },
     ],
   },
   {
@@ -132,6 +134,7 @@ export function App() {
           <AlertDescription className="select-text wrap-anywhere">{loadError}</AlertDescription>
         </Alert>}
         {view.page === 'status' && <StatusPage data={data} busy={busy} action={action} />}
+        {view.page === 'mcp' && <McpPage />}
         {view.page === 'directories' && <DirectoriesPage data={data} action={action} onAdd={() => { void addDirectory(); }} />}
         {view.page === 'executions' && <>
           <header className="dash-page-heading">

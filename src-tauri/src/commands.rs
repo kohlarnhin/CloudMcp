@@ -1,5 +1,5 @@
 use crate::{
-    cloudflare, executions, portal, privacy, server,
+    cloudflare, executions, portal, privacy, proxy, server,
     store::{AppResult, Settings, Store},
     tunnel,
 };
@@ -132,6 +132,56 @@ pub async fn cloudflare_setup(state: State<'_, Arc<Store>>, hostname: String) ->
     cloudflare::setup(&state, &hostname)
         .await
         .map_err(|e| privacy::text(&e))
+}
+
+/// 转发的本机 MCP 服务器及其连接状态。
+#[tauri::command]
+pub fn proxy_list(state: State<'_, Arc<Store>>) -> AppResult<Value> {
+    let servers = proxy::list(&state)?;
+    let entries: Vec<_> = servers
+        .into_iter()
+        .map(|s| {
+            let connected = proxy::connected(&state, &s.name);
+            let mut v = json!(s);
+            v["connected"] = json!(connected);
+            v
+        })
+        .collect();
+    Ok(json!(entries))
+}
+#[tauri::command]
+pub fn proxy_save(
+    state: State<'_, Arc<Store>>,
+    server: proxy::ProxyServer,
+    original: Option<String>,
+) -> AppResult<()> {
+    proxy::save(&state, server, original.as_deref())
+}
+#[tauri::command]
+pub fn proxy_remove(state: State<'_, Arc<Store>>, name: String) -> AppResult<()> {
+    proxy::remove(&state, &name)
+}
+#[tauri::command]
+pub fn proxy_toggle(state: State<'_, Arc<Store>>, name: String, enabled: bool) -> AppResult<()> {
+    proxy::set_enabled(&state, &name, enabled)
+}
+/// 连接服务器并列出工具名，用于本机检查配置。
+#[tauri::command]
+pub async fn proxy_test(state: State<'_, Arc<Store>>, name: String) -> AppResult<Value> {
+    proxy::test(state.inner(), &name)
+        .await
+        .map_err(|e| privacy::text(&e))
+}
+#[tauri::command]
+pub fn proxy_import_sources() -> Value {
+    json!(proxy::import_sources())
+}
+#[tauri::command]
+pub fn proxy_import(
+    state: State<'_, Arc<Store>>,
+    servers: Vec<proxy::ProxyServer>,
+) -> AppResult<Vec<String>> {
+    proxy::import(&state, servers)
 }
 
 /// 只读：转发 Codex Portal 本地 IPC 的 status，界面不提供切换。

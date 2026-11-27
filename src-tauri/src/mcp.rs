@@ -11,6 +11,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+/// Gateway tools for forwarded local MCP servers; offered while at least one is enabled.
+const PROXY_TOOLS: [&str; 3] = ["proxy_list", "proxy_tools", "proxy_call"];
+
 /// Tools that only exist while Codex delegation is enabled in the local settings.
 const CODEX_TOOLS: [&str; 2] = ["codex_exec", "codex_portal"];
 
@@ -19,6 +22,8 @@ pub struct Gateway {
     store: Arc<Store>,
     codex_enabled: bool,
     pi_enabled: bool,
+    /// Names of the enabled forwarded MCP servers when this session started.
+    proxied: Vec<String>,
     tool_router: ToolRouter<Self>,
 }
 impl Gateway {
@@ -30,6 +35,15 @@ impl Gateway {
         let mut tool_router = Self::tool_router();
         if !pi_enabled {
             tool_router.remove_route("pi_exec");
+        }
+        let proxied: Vec<String> = crate::proxy::enabled(&store)
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        if proxied.is_empty() {
+            for name in PROXY_TOOLS {
+                tool_router.remove_route(name);
+            }
         }
         if !codex_enabled {
             for name in CODEX_TOOLS {
@@ -43,6 +57,7 @@ impl Gateway {
             store,
             codex_enabled,
             pi_enabled,
+            proxied,
             tool_router,
         }
     }
@@ -109,6 +124,21 @@ struct MutateArgs {
     recursive: Option<bool>,
 }
 #[derive(Deserialize, schemars::JsonSchema)]
+struct ProxyToolsArgs {
+    /// Server name from proxy_list.
+    server: String,
+}
+#[derive(Deserialize, schemars::JsonSchema)]
+struct ProxyCallArgs {
+    /// Server name from proxy_list.
+    server: String,
+    /// Tool name from proxy_tools.
+    tool: String,
+    /// Arguments matching the tool's input schema.
+    #[serde(default)]
+    arguments: Option<serde_json::Map<String, Value>>,
+}
+#[derive(Deserialize, schemars::JsonSchema)]
 struct SearchArgs {
     #[serde(alias = "scope_id")]
     workspace: String,
@@ -155,6 +185,33 @@ impl Gateway {
             &workspace,
             executions::pi(self.store.clone(), p).await,
         )
+    }
+    #[tool(
+        description = "List the local MCP servers this machine forwards through CloudMCP (stdio processes and localhost endpoints a remote agent cannot reach directly), with their descriptions and connection state."
+    )]
+    fn proxy_list(&self) -> CallToolResult {
+        self.result("proxy.list", "", crate::proxy::overview(&self.store))
+    }
+    #[tool(
+        description = "Connect to a forwarded local MCP server if needed and list its tools with descriptions and input schemas. Call this before proxy_call."
+    )]
+    async fn proxy_tools(&self, Parameters(p): Parameters<ProxyToolsArgs>) -> CallToolResult {
+        let result = crate::proxy::tools(&self.store, &p.server).await;
+        self.result("proxy.tools", &p.server, result)
+    }
+    #[tool(
+        description = "Call a tool on a forwarded local MCP server and return its result unchanged (text, images, structured content and isError). Calls run with the user's full permissions and time out after 10 minutes."
+    )]
+    async fn proxy_call(&self, Parameters(p): Parameters<ProxyCallArgs>) -> CallToolResult {
+        let target = format!("{}/{}", p.server, p.tool);
+        match crate::proxy::call(&self.store, &p.server, &p.tool, p.arguments).await {
+            Ok(result) => {
+                self.store
+                    .audit("proxy.call", &target, result.is_error != Some(true));
+                result
+            }
+            Err(e) => self.result("proxy.call", &target, Err(e)),
+        }
     }
     #[tool(
         description = "Query local Codex Portal quota with action=status or request a smart account switch with action=switch. Portal applies its own rule and chooses the usable account whose short-cycle window expires earliest. When the current account is still usable, Portal usually keeps it active (switched=false). When allExhausted=true, wait until earliestRecoveryAt before calling switch again. If Portal reports ‘正在执行或等待重试’, a switch is already running or pending retry. Wait before trying again."
@@ -375,6 +432,21 @@ const INSTRUCTIONS_PI: &str = concat!(
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for Gateway {
     fn get_info(&self) -> ServerConfig {
+        let mut info = self.base_info();
+        if !self.proxied.is_empty() {
+            let mut text = info.instructions.take().unwrap_or_default();
+            text.push_str(&format!(
+                " Local MCP servers on this machine are forwarded through CloudMCP: {}. Call proxy_tools with a server name to see its tools and input schemas, then proxy_call with server, tool and arguments. These servers run with the user's full permissions outside the command sandbox.",
+                self.proxied.join(", ")
+            ));
+            info.instructions = Some(text);
+        }
+        info
+    }
+}
+
+impl Gateway {
+    fn base_info(&self) -> ServerConfig {
         let mut info = ServerConfig::default();
         info.server_info = rmcp::model::Implementation::new("cloudmcp", env!("CARGO_PKG_VERSION"));
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
@@ -560,6 +632,35 @@ mod tests {
         assert!(gateway.tool_router.has_route("pi_exec"));
         assert!(!gateway.tool_router.has_route("codex_exec"));
         assert!(gateway.get_info().instructions.unwrap().contains("pi_exec"));
+    }
+
+    #[test]
+    fn proxy_tools_appear_only_with_an_enabled_server() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(temp.path().join("data")).unwrap();
+        let gateway = Gateway::new(store.clone());
+        assert!(!gateway.tool_router.has_route("proxy_call"));
+        crate::proxy::save(
+            &store,
+            crate::proxy::ProxyServer {
+                name: "fs".into(),
+                enabled: true,
+                transport: "stdio".into(),
+                command: "npx".into(),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+        let gateway = Gateway::new(store.clone());
+        for name in PROXY_TOOLS {
+            assert!(gateway.tool_router.has_route(name));
+        }
+        assert!(gateway
+            .get_info()
+            .instructions
+            .unwrap()
+            .contains("forwarded through CloudMCP: fs"));
     }
 
     #[test]
