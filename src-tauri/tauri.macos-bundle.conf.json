@@ -1,0 +1,9 @@
+{
+  "build": {
+    "beforeBuildCommand": "node scripts/prepare-cloudflared.mjs && pnpm build"
+  },
+  "bundle": {
+    "externalBin": ["binaries/cloudflared/cloudflared"],
+    "resources": ["licenses/cloudflared-LICENSE.txt"]
+  }
+}

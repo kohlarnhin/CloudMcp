@@ -38,15 +38,15 @@ pnpm install
 pnpm tauri dev
 ```
 
-构建 macOS 应用：
+构建内置 cloudflared 的 macOS 应用：
 
 ```sh
-pnpm tauri build --bundles app
+pnpm tauri build --bundles app --config src-tauri/tauri.macos-bundle.conf.json
 ```
 
 前端逻辑测试用 `node --test 'scripts/*.test.mjs'` 运行，后端测试用 `cd src-tauri && cargo test` 运行。
 
-文件与普通命令工具不依赖 Codex 或 Python；使用 `codex_exec` 需要本机已安装并配置 Codex CLI。公网隧道需要额外安装 cloudflared；应用不会自动安装或登录 Cloudflare。
+文件与普通命令工具不依赖 Codex 或 Python；使用 `codex_exec` 需要本机已安装并配置 Codex CLI。macOS 发布包内置 cloudflared，源码开发或单独运行的二进制可使用本机的 cloudflared。
 
 ## 发布
 
@@ -165,7 +165,9 @@ Agent A 额度耗尽后，Agent B 连接同一个 MCP 地址与令牌，只需�
 
 ## Cloudflare 隧道
 
-临时隧道无需 Cloudflare 账号和域名，会生成临时 HTTPS 地址；重新创建后地址可能变化。固定隧道需要提前配置账号、域名、凭据和路由。应用负责运行已配置的 cloudflared。
+临时隧道使用内置的 cloudflared，无需 Cloudflare 账号和域名，会生成临时 HTTPS 地址。重新创建后地址可能变化。固定隧道需要提前配置账号、域名、凭据和路由。
+
+在「设置 → 连接」的可执行文件字段填 `cloudflared` 会优先使用应用包内置版本。也可填写自定义路径。「设置 → 诊断 → 运行环境」显示实际使用的版本和位置。构建时按目标架构下载固定版本、校验 SHA-256 并随应用附上 Apache 2.0 许可证。
 
 参考：[Cloudflare 下载](https://developers.cloudflare.com/tunnel/downloads/)、[临时隧道](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)、[MCP Rust SDK](https://github.com/modelcontextprotocol/rust-sdk)。
 

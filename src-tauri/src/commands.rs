@@ -91,8 +91,8 @@ pub async fn dependencies(state: State<'_, Arc<Store>>) -> AppResult<Value> {
     let config = state.config();
     let mut entries = Vec::new();
     for (name, path) in [
-        ("cloudflared", config.cloudflared_path),
-        ("codex", config.codex_path),
+        ("cloudflared", tunnel::executable(&config.cloudflared_path)),
+        ("codex", PathBuf::from(config.codex_path)),
     ] {
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(5),
@@ -108,7 +108,7 @@ pub async fn dependencies(state: State<'_, Arc<Store>>) -> AppResult<Value> {
             ),
             _ => (false, "未找到或无法启动".into()),
         };
-        entries.push(json!({"name":name,"path":path,"available":available,"version":privacy::text(&version)}));
+        entries.push(json!({"name":name,"path":path.to_string_lossy(),"available":available,"version":privacy::text(&version)}));
     }
     Ok(json!(entries))
 }

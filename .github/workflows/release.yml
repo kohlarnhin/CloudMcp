@@ -68,7 +68,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           test -n "$TAURI_SIGNING_PRIVATE_KEY"
-          pnpm tauri build --ci --target "$RUST_TARGET" --bundles app,dmg --config src-tauri/tauri.release.conf.json -- --locked
+          pnpm tauri build --ci --target "$RUST_TARGET" --bundles app,dmg \
+            --config src-tauri/tauri.macos-bundle.conf.json \
+            --config src-tauri/tauri.release.conf.json -- --locked
       - name: Verify and collect release files
         run: |
           bundle="src-tauri/target/$RUST_TARGET/release/bundle"
@@ -76,11 +78,12 @@ jobs:
           plist="$app/Contents/Info.plist"
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "$GITHUB_REF_NAME"
-          if [[ "$ARCH" == aarch64 ]]; then
-            test "$(lipo -archs "$app/Contents/MacOS/$executable")" = arm64
-          else
-            test "$(lipo -archs "$app/Contents/MacOS/$executable")" = "$ARCH"
-          fi
+          mac_arch="$ARCH"
+          if [[ "$ARCH" == aarch64 ]]; then mac_arch=arm64; fi
+          test "$(lipo -archs "$app/Contents/MacOS/$executable")" = "$mac_arch"
+          test "$(lipo -archs "$app/Contents/MacOS/cloudflared")" = "$mac_arch"
+          "$app/Contents/MacOS/cloudflared" --version
+          test -s "$app/Contents/Resources/licenses/cloudflared-LICENSE.txt"
           codesign --verify --deep --strict "$app"
           dmg=("$bundle"/dmg/*.dmg)
           test "${#dmg[@]}" -eq 1
@@ -150,6 +153,7 @@ jobs:
           - Apple Silicon（M 系列）下载 `aarch64.dmg`。
           - Intel Mac 下载 `x86_64.dmg`。
           - 将 CloudMCP 拖到「应用程序」。后续版本可从「设置 → 关于」检查和安装更新。
+          - 安装包已内置 cloudflared，可直接使用临时隧道。
 
           DMG 使用 macOS 临时签名。首次打开时，可能需要在「系统设置 → 隐私与安全性」确认运行。
           NOTES

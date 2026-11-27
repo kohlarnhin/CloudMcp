@@ -42,7 +42,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             port: 8787,
-            cloudflared_path: find_binary("cloudflared"),
+            cloudflared_path: "cloudflared".into(),
             tunnel_mode: "quick".into(),
             tunnel_name: String::new(),
             public_url: String::new(),

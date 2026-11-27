@@ -13,7 +13,7 @@ The installed copy at `~/Applications/CloudMCP.app` is usually running and servi
 
 - Start `pnpm tauri dev` or a built bundle only under a different identifier, for example `--config '{"identifier":"dev.cloudmcp.desktop.verify"}'`, so that it gets its own data directory.
 - Leave port 8787 and `~/Library/Application Support/dev.cloudmcp.desktop` alone.
-- Copy a build into `~/Applications` only when the user asks for it. An install is: build with `pnpm tauri build --bundles app`, replace `~/Applications/CloudMCP.app` with the new bundle without keeping a backup of the old one, then delete the bundle under `src-tauri/target/`.
+- Copy a build into `~/Applications` only when the user asks for it. An install is: build with `pnpm tauri build --bundles app --config src-tauri/tauri.macos-bundle.conf.json`, replace `~/Applications/CloudMCP.app` with the new bundle without keeping a backup of the old one, then delete the bundle under `src-tauri/target/`.
 - Keep `~/Applications/CloudMCP.app` the only `CloudMCP.app` on the machine. Spotlight opens whichever same-named copy it has launched most, which used to be a stale `target/debug` bundle. `mdfind "kMDItemCFBundleIdentifier == 'dev.cloudmcp.desktop*'"` lists every copy.
 
 ## Frontend

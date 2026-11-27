@@ -1,13 +1,41 @@
 use crate::{
     shell::terminate,
-    store::{err, AppResult, Store},
+    store::{err, find_binary, AppResult, Store},
 };
-use std::{process::Stdio, sync::Arc};
+#[cfg(target_os = "macos")]
+use std::path::Path;
+use std::{path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
 use tokio_util::sync::CancellationToken;
+
+pub fn executable(configured: &str) -> PathBuf {
+    if configured != "cloudflared" {
+        return configured.into();
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(path) = std::env::current_exe()
+        .ok()
+        .as_deref()
+        .and_then(bundled_executable)
+    {
+        return path;
+    }
+    find_binary("cloudflared").into()
+}
+
+#[cfg(target_os = "macos")]
+fn bundled_executable(app_executable: &Path) -> Option<PathBuf> {
+    let directory = app_executable.parent()?;
+    let app = directory.parent()?.parent()?;
+    if !directory.ends_with("Contents/MacOS") || app.extension()? != "app" {
+        return None;
+    }
+    let sidecar = directory.join("cloudflared");
+    sidecar.is_file().then_some(sidecar)
+}
 
 pub async fn start(store: Arc<Store>) -> AppResult<()> {
     let config = store.config();
@@ -25,7 +53,7 @@ pub async fn start(store: Arc<Store>) -> AppResult<()> {
     {
         return Err("请填写已配置的隧道名称和 HTTPS 公网地址".into());
     }
-    let mut cmd = Command::new(&config.cloudflared_path);
+    let mut cmd = Command::new(executable(&config.cloudflared_path));
     cmd.args([
         "tunnel",
         "--no-autoupdate",
@@ -47,7 +75,7 @@ pub async fn start(store: Arc<Store>) -> AppResult<()> {
     }
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("无法启动 cloudflared：{e}。请安装后在设置中填写可执行文件路径。"))?;
+        .map_err(|e| format!("无法启动 cloudflared：{e}。请在设置中填写 cloudflared 自动选择内置版，或填写本机可执行文件的路径。"))?;
     let pid = child.id();
     let cancel = CancellationToken::new();
     let generation = uuid::Uuid::new_v4().to_string();
@@ -109,4 +137,26 @@ pub fn stop(store: &Store) {
     live.tunnel_url = None;
     live.tunnel_error = None;
     live.tunnel_id = None;
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::bundled_executable;
+    use std::fs;
+
+    #[test]
+    fn finds_cloudflared_only_inside_the_application_bundle() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("cloudflared"), []).unwrap();
+        assert_eq!(bundled_executable(&dir.path().join("cloudmcp")), None);
+
+        let macos = dir.path().join("CloudMCP.app/Contents/MacOS");
+        fs::create_dir_all(&macos).unwrap();
+        let app = macos.join("cloudmcp");
+        assert_eq!(bundled_executable(&app), None);
+
+        let sidecar = macos.join("cloudflared");
+        fs::write(&sidecar, []).unwrap();
+        assert_eq!(bundled_executable(&app), Some(sidecar));
+    }
 }

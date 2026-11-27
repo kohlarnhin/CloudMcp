@@ -118,9 +118,9 @@ export function SettingsPage({ data, refresh, appearance, appUpdate, diagnostics
                 onChange={event => update('public_url', event.target.value)} aria-describedby="public-url-help" className={pathInput} />
             </SettingsField>
           </>}
-          <SettingsField id="cloudflared-path" label="cloudflared 可执行文件">
+          <SettingsField id="cloudflared-path" label="cloudflared 可执行文件" description="填写 cloudflared 自动选择内置版，也可填写本机可执行文件的路径。">
             <Input id="cloudflared-path" required value={settings.cloudflared_path} title={settings.cloudflared_path}
-              onChange={event => update('cloudflared_path', event.target.value)} className={pathInput} />
+              onChange={event => update('cloudflared_path', event.target.value)} aria-describedby="cloudflared-path-help" className={pathInput} />
           </SettingsField>
         </fieldset>
         <div className="h1-list-row settings-token">
